@@ -11,11 +11,11 @@ fn main() {
      if command.trim() == "exit"{
         break;
      }
-     if command.starts_with("echo ") {//
+     else if command.starts_with("echo ") {//
     println!("{}", &command[5..]);
 }
-     
-   //  println!("{}: command not found",command.trim());
+     else{
+     println!("{}: command not found",command.trim());}
     }
     }
 
