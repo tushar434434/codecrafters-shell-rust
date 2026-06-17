@@ -25,6 +25,22 @@ fn main() {
                 println!("{}: not found", arg); // Note the exact error format required for this stage
             }
         } else {
+            let mut found =false;
+            if let Ok(path_env) = env::var("Path"){
+                for path in env::splits_path(&path_env){
+                    let exe_path=path.join(args);
+                    if exe_path.exists(){
+                       println!("{} is {}", arg, exe_path.display());
+                            found = true;
+                            break; 
+                    }
+                }
+            }
+            if !found {
+                    println!("{}: not found", arg);
+                }
+            }
+            else {
             println!("{}: command not found", command);
         }
     }
