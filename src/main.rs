@@ -15,6 +15,7 @@ fn main() {
     println!("{}", &command[5..]);
 }
      
-     println!("{}: command not found",command.trim());
+   //  println!("{}: command not found",command.trim());
     }
     }
+
