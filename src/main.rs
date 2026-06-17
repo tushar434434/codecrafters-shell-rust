@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
 use std::io::{self, Write};
-use std::env::args;
+use std::env;
 
 fn main() {
     loop {
@@ -29,7 +29,7 @@ fn main() {
             let mut found =false;
             if let Ok(path_env) = env::var("Path"){
                 for path in env::splits_path(&path_env){
-                    let exe_path=path.join(args);
+                    let exe_path=path.join(arg);
                     if exe_path.exists(){
                        println!("{} is {}", arg, exe_path.display());
                             found = true;
