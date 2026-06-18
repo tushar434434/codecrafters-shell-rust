@@ -48,12 +48,18 @@ fn main() {
         } else if command.starts_with("type ") {
             let arg = &command[5..];
 
-            if arg == "echo" || arg == "exit" || arg == "type" {
+            if arg == "echo" || arg == "exit" || arg == "type" || arg=="pwd" {
                 println!("{} is a shell builtin", arg);
             } else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
             } else {
                 println!("{}: not found", arg);
+            }
+            else if command == "pwd" {
+                match env::current_dir(){
+                    Ok(path)=>println!("{}",path.display()),
+                    Err(_)=>eprintln!("pwd: unable to get current directory"),
+                }
             }
         } else {
             // 3. Global fallback: Check if the base command exists in PATH
