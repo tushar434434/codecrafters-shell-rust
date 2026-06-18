@@ -55,11 +55,11 @@ fn main() {
             } else {
                 println!("{}: not found", arg);
             }
-            else if command == "pwd" {
+         } else if command == "pwd" {
                 match env::current_dir(){
                     Ok(path)=>println!("{}",path.display()),
                     Err(_)=>eprintln!("pwd: unable to get current directory"),
-                }
+                
             }
         } else {
             // 3. Global fallback: Check if the base command exists in PATH
