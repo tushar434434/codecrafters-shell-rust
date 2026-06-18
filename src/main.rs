@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use std::env;
 use std::path::PathBuf;
 use std::os::unix::fs::PermissionsExt;
-//use std::process::Command; // Required to run external binaries
+use std::process::Command; // Required to run external binaries
 
 // Helper function to scan PATH for an executable
 fn find_executable(cmd: &str) -> Option<PathBuf> {
@@ -50,7 +50,7 @@ fn main() {
             else if c == '"' && !in_quotes{
                 double_quotes =! double_quotes;
             }
-            else if c.is_whitespace() && !in_quotes &&double_quotes {
+            else if c.is_whitespace() && !in_quotes && !double_quotes {
                 if !current.is_empty() {
                     parts.push(current.clone());
                     current.clear();
