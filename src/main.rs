@@ -36,7 +36,28 @@ fn main() {
         }
 
         // 1. Split the command string into parts (program name + arguments)
-        let parts: Vec<&str> = command.split_whitespace().collect();
+       // let parts: Vec<&str> = command.split_whitespace().collect();
+        let mut parts:Vec<String> = Vec::new();
+        let mut current= String::new();
+        let mut in_quotes=false;
+        for c in command.chars(){
+            if c == '\''{
+                in_quotes =!in_quotes;
+            }
+            else if c.is_whitespace() && !in_quotes {
+                if !current.is_empty(){
+                    parts.push(current.clone());
+                    current.clear();
+                }
+                }
+                else{
+                    current.push(c);
+                }
+            }
+            if !current.is_empty(){
+                parts.push(current);
+            
+        }
         let cmd_name = parts[0];
         let args = &parts[1..];
 
