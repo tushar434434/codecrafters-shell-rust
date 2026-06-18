@@ -64,7 +64,13 @@ fn main() {
         }
         else if cmd_name == "cd"{
         let dir = args[0];
-        if let Err(_)=env::set_current_dir(dir){//"Please make /usr/local/bin the current working directory."
+        if dir == "~"{
+            if let Ok(home)=env::var("HOME"){
+                env::set_current_dir(home).unwrap();
+            }
+        }
+        
+       else if let Err(_)=env::set_current_dir(dir){//"Please make /usr/local/bin the current working directory."
         //if successfull it will return Ok(()) otherwise will give error
             println!("cd: {}: No such file or directory", dir);
         }
