@@ -98,7 +98,7 @@ fn main() {
      //   let args = &parts[1..];
     // let mut redirect_file=None;
     let mut stdout_file=None;
-    let mut stdrer_file=None;
+    let mut stderr_file=None;
 
      let mut args =Vec::new();
      let mut i=1;
