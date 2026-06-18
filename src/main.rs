@@ -98,7 +98,7 @@ fn main() {
      //   let args = &parts[1..];
     // let mut redirect_file=None;
     let mut stdout_file=None;
-    let mut stdeer_file=None;
+    let mut stdrer_file=None;
 
      let mut args =Vec::new();
      let mut i=1;
@@ -108,7 +108,7 @@ fn main() {
             break;
         }
         else if parts[i]=="2>"{
-            stdeer_file=Some(parts[i+1].clone());
+            stderr_file=Some(parts[i+1].clone());
             break;
         }
 
@@ -198,9 +198,9 @@ fn main() {
                 cmd.stdout(Stdio::from(file));
                 }
 
-                if let Some(file_name) = &stdeer_file {
+                if let Some(file_name) = &stderr_file {
                 let file = File::create(file_name).unwrap();
-                cmd.stdeer(Stdio::from(file));
+                cmd.stdrer(Stdio::from(file));
                 }
             // Spawn the process using the command name and pass the arguments slice
                 let mut child = cmd
