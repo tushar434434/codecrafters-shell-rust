@@ -198,9 +198,9 @@ fn main() {
                 cmd.stdout(Stdio::from(file));
                 }
 
-                if let Some(file_name) = &stderr_file {
+                if let Some(file_name) = &stdeer_file {
                 let file = File::create(file_name).unwrap();
-                cmd.stderr(Stdio::from(file));
+                cmd.stdeer(Stdio::from(file));
                 }
             // Spawn the process using the command name and pass the arguments slice
                 let mut child = cmd
