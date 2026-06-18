@@ -6,6 +6,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::process::Command; // Required to run external binaries
 use std::fs::File;//for file reading and writing
 use std::process::Stdio;
+use std::fs::OpenOptions;
 // Helper function to scan PATH for an executable
 fn find_executable(cmd: &str) -> Option<PathBuf> {
     if let Ok(path_env) = env::var("PATH") {
@@ -99,9 +100,11 @@ fn main() {
     // let mut redirect_file=None;
     let mut stdout_file=None;
     let mut stderr_file=None;
+    let mut append_stdout=false;
 
      let mut args =Vec::new();
      let mut i=1;
+     /*
      while i < parts.len(){
         if parts[i] == ">" || parts[i]=="1>"{
             stdout_file =Some(parts[i+1].clone());
@@ -114,8 +117,27 @@ fn main() {
 
         args.push(parts[i].clone());
         i+=1;
-     }
+     }*/ while i < parts.len(){
+        if parts[i] == ">" || parts[i]=="1>"{
+         stdout_file =Some(parts[i+1].clone());
+        i+=2;
+        continue;
+        }
+        else if parts[i] == ">>" || parts[i] == "1>>"{
+        stdout_file =Some(parts[i+1].clone());
+        append_stdout=true;
+        i+=2;
+        continue;
+        }
+        else if parts[i]=="2>"{
+         stderr_file=Some(parts[i+1].clone());
+         i+=2;
+         continue;
+        }
 
+        args.push(parts[i].clone());
+        i+=1;
+    }
         // 2. Evaluate builtins or look for external commands
         if cmd_name == "exit" {
             break;
@@ -131,19 +153,31 @@ fn main() {
            }
         }*/
         else if cmd_name == "echo" {
-         // println!("{}", args.join(" "));
-        let output =args.join(" ");
-        if let Some(file_name) = &stdout_file{
-        std::fs::write(file_name,format!("{}\n",output)).unwrap();
-         }
-        else {
-        println!("{}",output);
+   // println!("{}", args.join(" "));
+   let output =args.join(" ");
 
-        if let Some(file_name) = &stderr_file{
-        let _file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
-         }
-       }
+   if let Some(file_name) = &stdout_file{
+    if append_stdout{
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(file_name)
+            .unwrap();
+
+        writeln!(file,"{}",output).unwrap();
     }
+    else{
+        std::fs::write(file_name,format!("{}\n",output)).unwrap();
+    }
+   }
+   else {
+    println!("{}",output);
+
+    if let Some(file_name) = &stderr_file{
+        let _file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
+    }
+   }
+}
         else if cmd_name == "type" {
             let arg = &args[0];
 
@@ -207,6 +241,7 @@ fn main() {
                 cmd.stdout(Stdio::from(file));
                 }
                 */
+                /*
                 if let Some(file_name) = &stdout_file {
                 let file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
                 cmd.stdout(Stdio::from(file));
@@ -215,7 +250,23 @@ fn main() {
                 if let Some(file_name) = &stderr_file {
                 let file = File::create(file_name).unwrap();
                 cmd.stderr(Stdio::from(file));
-                }
+                }*/
+                
+            if let Some(file_name) = &stdout_file {
+    if append_stdout{
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(file_name)
+            .unwrap();
+
+        cmd.stdout(Stdio::from(file));
+    }
+    else{
+        let file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
+        cmd.stdout(Stdio::from(file));
+    }
+}
             // Spawn the process using the command name and pass the arguments slice
                 let mut child = cmd
                 .spawn()
