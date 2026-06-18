@@ -48,7 +48,7 @@ fn main() {
         } else if command.starts_with("type ") {
             let arg = &command[5..];
 
-            if arg == "echo" || arg == "exit" || arg == "type"  {
+            if arg == "echo" || arg == "exit" || arg == "type" || arg=="pwd"|| arg=="cd" {
                 println!("{} is a shell builtin", arg);
             } else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
@@ -61,7 +61,15 @@ fn main() {
                     Err(_)=>eprintln!("pwd: unable to get current directory"),//agr path ni milla to error handling kr li
                 
             }
-        } else {
+        }
+        else if command == "cd"{
+        let dir = args[0];
+        if let Err(_)=env::set_current_dir(dir){//"Please make /usr/local/bin the current working directory."
+        //if successfull it will return Ok(()) otherwise will give error
+            println!("cd: {}: No such directory",dir);
+        }
+        }
+         else {
             // 3. Global fallback: Check if the base command exists in PATH
             if let Some(_path) = find_executable(cmd_name) {
                 // Spawn the process using the command name and pass the arguments slice
