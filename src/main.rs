@@ -42,9 +42,18 @@ fn main() {
         let mut current = String::new();
         let mut in_quotes = false;
         let mut double_quotes =false;
+        let mut escape=false;
 
         for c in command.chars() {
-            if c == '\'' && !double_quotes {
+        if escape {
+        current.push(c);
+        escape = false;
+    }
+
+    else if c == '\\' && !in_quotes && !double_quotes {
+        escape = true;
+    }
+           else if c == '\'' && !double_quotes {
                 in_quotes = !in_quotes;
             }
             else if c == '"' && !in_quotes{
