@@ -48,7 +48,7 @@ fn main() {
         } else if command.starts_with("type ") {
             let arg = &command[5..];
 
-            if arg == "echo" || arg == "exit" || arg == "type" || arg=="pwd" {
+            if arg == "echo" || arg == "exit" || arg == "type"  {
                 println!("{} is a shell builtin", arg);
             } else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
@@ -56,9 +56,9 @@ fn main() {
                 println!("{}: not found", arg);
             }
          } else if command == "pwd" {
-                match env::current_dir(){
-                    Ok(path)=>println!("{}",path.display()),
-                    Err(_)=>eprintln!("pwd: unable to get current directory"),
+                match env::current_dir(){//builtin function hota hai
+                    Ok(path)=>println!("{}",path.display()),//agr path hai to dispaly kr diya hai
+                    Err(_)=>eprintln!("pwd: unable to get current directory"),//agr path ni milla to error handling kr li
                 
             }
         } else {
