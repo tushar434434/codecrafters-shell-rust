@@ -50,9 +50,28 @@ fn main() {
         escape = false;
     }
 
-    else if c == '\\' && !in_quotes && !double_quotes {
+   /* else if c == '\\' && !in_quotes && !double_quotes {
         escape = true;
+    }*/else if c == '\\' {
+
+    if double_quotes {
+
+        // In double quotes, only " and \ are escapable in this stage
+        escape = true;
+
+    } else if !in_quotes {
+
+        // Outside quotes, everything can be escaped
+        escape = true;
+
+    } else {
+
+        // Inside single quotes, backslash is literal
+        current.push(c);
+
     }
+}
+
            else if c == '\'' && !double_quotes {
                 in_quotes = !in_quotes;
             }
