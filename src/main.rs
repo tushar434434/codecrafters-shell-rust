@@ -101,6 +101,7 @@ fn main() {
     let mut stdout_file=None;
     let mut stderr_file=None;
     let mut append_stdout=false;
+    let mut append_stderr=false;
 
      let mut args =Vec::new();
      let mut i=1;
@@ -128,11 +129,22 @@ fn main() {
         append_stdout=true;
         i+=2;
         continue;
-        }
+        }/*
         else if parts[i]=="2>"{
          stderr_file=Some(parts[i+1].clone());
          i+=2;
-         continue;
+         continue;*/
+         else if parts[i]=="2>"{
+    stderr_file=Some(parts[i+1].clone());
+    i+=2;
+    continue;
+}
+else if parts[i]=="2>>"{
+    stderr_file=Some(parts[i+1].clone());
+    append_stderr=true;
+    i+=2;
+    continue;
+}
         }
 
         args.push(parts[i].clone());
@@ -173,9 +185,21 @@ fn main() {
    else {
     println!("{}",output);
 
+   // if let Some(file_name) = &stderr_file{
+       // let _file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
+    //}
     if let Some(file_name) = &stderr_file{
+    if append_stderr{
+        let _file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(file_name)
+            .unwrap();
+    }
+    else{
         let _file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
     }
+}
 
    }
 }
@@ -267,10 +291,25 @@ fn main() {
         let file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
         cmd.stdout(Stdio::from(file));
     }
-}
+}/*
 if let Some(file_name) = &stderr_file {
     let file = File::create(file_name).unwrap();
-    cmd.stderr(Stdio::from(file));
+    cmd.stderr(Stdio::from(file));*/
+    if let Some(file_name) = &stderr_file {
+    if append_stderr{
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(file_name)
+            .unwrap();
+
+        cmd.stderr(Stdio::from(file));
+    }
+    else{
+        let file = File::create(file_name).unwrap();
+        cmd.stderr(Stdio::from(file));
+    }
+}
 }
             // Spawn the process using the command name and pass the arguments slice
                 let mut child = cmd
