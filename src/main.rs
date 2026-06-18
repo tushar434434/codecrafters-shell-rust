@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use std::env;
 use std::path::PathBuf;
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command; // Required to run external binaries
+//use std::process::Command; // Required to run external binaries
 
 // Helper function to scan PATH for an executable
 fn find_executable(cmd: &str) -> Option<PathBuf> {
@@ -41,7 +41,7 @@ fn main() {
         let mut parts: Vec<String> = Vec::new();
         let mut current = String::new();
         let mut in_quotes = false;
-        le mut double_quotes =false;
+        let mut double_quotes =false;
 
         for c in command.chars() {
             if c == '\'' && !double_quotes {
@@ -96,7 +96,7 @@ fn main() {
         }
         else if cmd_name == "cd" {
             let dir = &args[0];
-            
+
             if dir == "~" {
                 if let Ok(home) = env::var("HOME") {
                     env::set_current_dir(home).unwrap();
