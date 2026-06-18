@@ -36,78 +36,94 @@ fn main() {
         }
 
         // 1. Split the command string into parts (program name + arguments)
-       // let parts: Vec<&str> = command.split_whitespace().collect();
-        let mut parts:Vec<String> = Vec::new();
-        let mut current= String::new();
-        let mut in_quotes=false;
-        for c in command.chars(){
-            if c == '\''{
-                in_quotes =!in_quotes;
+        // let parts: Vec<&str> = command.split_whitespace().collect();
+
+        let mut parts: Vec<String> = Vec::new();
+        let mut current = String::new();
+        let mut in_quotes = false;
+
+        for c in command.chars() {
+            if c == '\'' {
+                in_quotes = !in_quotes;
             }
             else if c.is_whitespace() && !in_quotes {
-                if !current.is_empty(){
+                if !current.is_empty() {
                     parts.push(current.clone());
                     current.clear();
                 }
-                }
-                else{
-                    current.push(c);
-                }
             }
-            if !current.is_empty(){
-                parts.push(current);
-            
+            else {
+                current.push(c);
+            }
         }
-        let cmd_name = parts[0];
+
+        if !current.is_empty() {
+            parts.push(current);
+        }
+
+        let cmd_name = &parts[0];
         let args = &parts[1..];
 
         // 2. Evaluate builtins or look for external commands
-        if command == "exit" {
+        if cmd_name == "exit" {
             break;
-        } else if command.starts_with("echo ") {
-            println!("{}", &command[5..]);
-        } else if command.starts_with("type ") {
-            let arg = &command[5..];
+        }
+        else if cmd_name == "echo" {
+            println!("{}", args.join(" "));
+        }
+        else if cmd_name == "type" {
+            let arg = &args[0];
 
-            if arg == "echo" || arg == "exit" || arg == "type" || arg=="pwd"|| arg=="cd" {
+            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" {
                 println!("{} is a shell builtin", arg);
-            } else if let Some(path) = find_executable(arg) {
+            }
+            else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
-            } else {
+            }
+            else {
                 println!("{}: not found", arg);
             }
-         } else if command == "pwd" {
-                match env::current_dir(){//builtin function hota hai
-                    Ok(path)=>println!("{}",path.display()),//agr path hai to dispaly kr diya hai
-                    Err(_)=>eprintln!("pwd: unable to get current directory"),//agr path ni milla to error handling kr li
-                
+        }
+        else if cmd_name == "pwd" {
+            match env::current_dir() { //builtin function hota hai
+                Ok(path) => println!("{}", path.display()), //agr path hai to dispaly kr diya hai
+                Err(_) => eprintln!("pwd: unable to get current directory"), //agr path ni milla to error handling kr li
             }
         }
-        else if cmd_name == "cd"{
-        let dir = args[0];
-        if dir == "~"{
-            if let Ok(home)=env::var("HOME"){
-                env::set_current_dir(home).unwrap();
+        else if cmd_name == "cd" {
+            let dir = &args[0];
+
+            if dir == "~" {
+                if let Ok(home) = env::var("HOME") {
+                    env::set_current_dir(home).unwrap();
+                }
+            }
+
+            else if let Err(_) = env::set_current_dir(dir) { //"Please make /usr/local/bin the current working directory."
+                //if successfull it will return Ok(()) otherwise will give error
+                println!("cd: {}: No such file or directory", dir);
             }
         }
-        
-       else if let Err(_)=env::set_current_dir(dir){//"Please make /usr/local/bin the current working directory."
-        //if successfull it will return Ok(()) otherwise will give error
-            println!("cd: {}: No such file or directory", dir);
-        }
-        }
-         else {
+
+        else {
             // 3. Global fallback: Check if the base command exists in PATH
             if let Some(_path) = find_executable(cmd_name) {
+
+                let args_ref: Vec<&str> = args
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect();
+
                 // Spawn the process using the command name and pass the arguments slice
                 let mut child = Command::new(cmd_name)
-                    .args(args)
+                    .args(args_ref)
                     .spawn()
                     .unwrap();
-                
+
                 // Wait for the program to finish before displaying the next prompt
                 child.wait().unwrap();
-            } else {
+            }
+            else {
                 println!("{}: command not found", command);
             }
         }
