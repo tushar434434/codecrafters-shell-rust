@@ -41,12 +41,16 @@ fn main() {
         let mut parts: Vec<String> = Vec::new();
         let mut current = String::new();
         let mut in_quotes = false;
+        le mut double_quotes =false;
 
         for c in command.chars() {
-            if c == '\'' {
+            if c == '\'' && !double_quotes {
                 in_quotes = !in_quotes;
             }
-            else if c.is_whitespace() && !in_quotes {
+            else if c == '"' && !in_quotes{
+                double_quotes =! double_quotes;
+            }
+            else if c.is_whitespace() && !in_quotes &&double_quotes {
                 if !current.is_empty() {
                     parts.push(current.clone());
                     current.clear();
@@ -92,7 +96,7 @@ fn main() {
         }
         else if cmd_name == "cd" {
             let dir = &args[0];
-
+            
             if dir == "~" {
                 if let Ok(home) = env::var("HOME") {
                     env::set_current_dir(home).unwrap();
