@@ -4,7 +4,8 @@ use std::env;
 use std::path::PathBuf;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command; // Required to run external binaries
-
+use std::fs::File;//for file reading and writing
+use std::process::Stdio;
 // Helper function to scan PATH for an executable
 fn find_executable(cmd: &str) -> Option<PathBuf> {
     if let Ok(path_env) = env::var("PATH") {
@@ -94,14 +95,32 @@ fn main() {
         }
 
         let cmd_name = &parts[0];
-        let args = &parts[1..];
+     //   let args = &parts[1..];
+     let mut redirect_file=None;
+     let mut args =Vec::new();
+     let mut i=1;
+     while i < parts.len(){
+        if parts[i] == ">" || parts[i]=="1>"{
+            redirect_file =Some(parts[i+1].clone());
+            break;
+        }
+        args.push(parts[i].clone());
+        i+=1;
+     }
 
         // 2. Evaluate builtins or look for external commands
         if cmd_name == "exit" {
             break;
         }
         else if cmd_name == "echo" {
-            println!("{}", args.join(" "));
+           // println!("{}", args.join(" "));
+           let output =args.join(" ");
+           if let Some(file_name) = &redirect_file{
+            std::fs::write(file_name,format!("{}\n",output)).unwrap();
+           }
+           else {
+            println!("{}",output);
+           }
         }
         else if cmd_name == "type" {
             let arg = &args[0];
@@ -141,7 +160,7 @@ fn main() {
             // 3. Global fallback: Check if the base command exists in PATH
             if let Some(_path) = find_executable(cmd_name) {
 
-                let args_ref: Vec<&str> = args
+             /*   let args_ref: Vec<&str> = args
                     .iter()
                     .map(|s| s.as_str())
                     .collect();
@@ -151,6 +170,24 @@ fn main() {
                     .args(args_ref)
                     .spawn()
                     .unwrap();
+
+                // Wait for the program to finish before displaying the next prompt
+                child.wait().unwrap();*/
+                let args_ref: Vec<&str> = args
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect();
+                let mut cmd = Command::new(cmd_name);
+                cmd.args(args_ref);
+                if let Some(file_name) = &redirect_file {
+                let file = File::create(file_name).unwrap();
+                cmd.stdout(Stdio::from(file));
+                }
+
+            // Spawn the process using the command name and pass the arguments slice
+                let mut child = cmd
+                .spawn()
+                .unwrap();
 
                 // Wait for the program to finish before displaying the next prompt
                 child.wait().unwrap();
