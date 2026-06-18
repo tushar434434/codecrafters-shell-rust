@@ -200,7 +200,7 @@ fn main() {
 
                 if let Some(file_name) = &stderr_file {
                 let file = File::create(file_name).unwrap();
-                cmd.stdrer(Stdio::from(file));
+                cmd.stderr(Stdio::from(file));
                 }
             // Spawn the process using the command name and pass the arguments slice
                 let mut child = cmd
