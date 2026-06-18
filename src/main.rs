@@ -119,7 +119,7 @@ fn main() {
         // 2. Evaluate builtins or look for external commands
         if cmd_name == "exit" {
             break;
-        }
+        }/*
         else if cmd_name == "echo" {
            // println!("{}", args.join(" "));
            let output =args.join(" ");
@@ -129,7 +129,21 @@ fn main() {
            else {
             println!("{}",output);
            }
-        }
+        }*/
+        else if cmd_name == "echo" {
+         // println!("{}", args.join(" "));
+        let output =args.join(" ");
+        if let Some(file_name) = &stdout_file{
+        std::fs::write(file_name,format!("{}\n",output)).unwrap();
+         }
+        else {
+        println!("{}",output);
+
+        if let Some(file_name) = &stderr_file{
+        let _file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
+         }
+       }
+    }
         else if cmd_name == "type" {
             let arg = &args[0];
 
