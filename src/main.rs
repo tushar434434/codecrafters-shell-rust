@@ -176,6 +176,7 @@ fn main() {
     if let Some(file_name) = &stderr_file{
         let _file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
     }
+
    }
 }
         else if cmd_name == "type" {
@@ -266,6 +267,10 @@ fn main() {
         let file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
         cmd.stdout(Stdio::from(file));
     }
+}
+if let Some(file_name) = &stderr_file {
+    let file = File::create(file_name).unwrap();
+    cmd.stderr(Stdio::from(file));
 }
             // Spawn the process using the command name and pass the arguments slice
                 let mut child = cmd
