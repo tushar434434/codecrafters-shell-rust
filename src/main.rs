@@ -96,14 +96,22 @@ fn main() {
 
         let cmd_name = &parts[0];
      //   let args = &parts[1..];
-     let mut redirect_file=None;
+    // let mut redirect_file=None;
+    let mut stdout_file=None;
+    let mut stdeer_file=None;
+
      let mut args =Vec::new();
      let mut i=1;
      while i < parts.len(){
         if parts[i] == ">" || parts[i]=="1>"{
-            redirect_file =Some(parts[i+1].clone());
+            stdout_file =Some(parts[i+1].clone());
             break;
         }
+        else if parts[i]=="2>"{
+            stdeer_file=Some(parts[i+1].clone());
+            break;
+        }
+
         args.push(parts[i].clone());
         i+=1;
      }
@@ -115,7 +123,7 @@ fn main() {
         else if cmd_name == "echo" {
            // println!("{}", args.join(" "));
            let output =args.join(" ");
-           if let Some(file_name) = &redirect_file{
+           if let Some(file_name) = &stdout_file{
             std::fs::write(file_name,format!("{}\n",output)).unwrap();
            }
            else {
@@ -179,11 +187,21 @@ fn main() {
                         .collect();
                 let mut cmd = Command::new(cmd_name);
                 cmd.args(args_ref);
+                /*
                 if let Some(file_name) = &redirect_file {
                 let file = File::create(file_name).unwrap();
                 cmd.stdout(Stdio::from(file));
                 }
+                */
+                if let Some(file_name) = &stdout_file {
+                let file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
+                cmd.stdout(Stdio::from(file));
+                }
 
+                if let Some(file_name) = &stderr_file {
+                let file = File::create(file_name).unwrap();
+                cmd.stderr(Stdio::from(file));
+                }
             // Spawn the process using the command name and pass the arguments slice
                 let mut child = cmd
                 .spawn()
