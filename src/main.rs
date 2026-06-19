@@ -15,6 +15,7 @@ use rustyline::{
     validate::Validator,
     Context, Editor, Helper,
 };
+use std::cell::{Cell, RefCell};
 //Hinter:Provides gray suggestions while typing.
 //Completer:A trait (interface) that allows us to define our own tab-completion behavior.
 //Editor: Provides readline functionality.
@@ -37,9 +38,26 @@ fn find_executable(cmd: &str) -> Option<PathBuf> {
     }
     None
 }
+/*
 #[derive(Default)]
-struct ShellHelper;
+struct ShellHelper{ //because self is immutable
+    last_prefix:String,
+    tab_count:usize,
+}
+*/
+struct ShellHelper {
+    last_prefix: RefCell<String>,
+    tab_count: Cell<usize>,
+}
 
+impl Default for ShellHelper {
+    fn default() -> Self {
+        Self {
+            last_prefix: RefCell::new(String::new()),
+            tab_count: Cell::new(0),
+        }
+    }
+}
 impl Helper for ShellHelper {}
 
 impl Hinter for ShellHelper {
@@ -88,6 +106,9 @@ fn complete(
     let mut commands = vec![
         "echo".to_string(),
         "exit".to_string(),
+        "type".to_string(),
+        "pwd".to_string(),
+        "cd".to_string(),
     ];
     // Add executables from PATH
     if let Ok(path_env) = env::var("PATH") {
@@ -96,14 +117,15 @@ fn complete(
             if let Ok(entries) = std::fs::read_dir(dir) {//read each line
                 for entry in entries.flatten() {//each entry is one file
                     if let Some(name) = entry.file_name().to_str() {//extracting file name
-                        commands.push(name.to_string());//command vector mein  jod diye sb ko
+                        commands.push(name.to_string());//command vector mein jod diye sb ko
                     }
                 }
             }
         }
     }
 
-
+    commands.sort();
+    commands.dedup();
 
     let matches = commands
         .iter()
@@ -113,6 +135,32 @@ fn complete(
             replacement: format!("{} ", cmd),
         })
         .collect::<Vec<Pair>>();
+
+    // Track sequential tab presses
+    let mut last_p = self.last_prefix.borrow_mut();
+    if *last_p == prefix {
+        self.tab_count.set(self.tab_count.get() + 1);
+    } else {
+        self.tab_count.set(1);
+        *last_p = prefix.to_string();
+    }
+
+    if matches.len() > 1 {
+        if self.tab_count.get() == 1 {
+            // First tab press: ring the bell
+            print!("\x07");
+            io::stdout().flush().unwrap();
+            return Ok((0, Vec::new()));
+        } else if self.tab_count.get() == 2 {
+            // Second tab press: print options cleanly alphabetically
+            println!();
+            let names: Vec<String> = matches.iter().map(|m| m.display.clone()).collect();
+            println!("{}", names.join("  "));
+            // Clear counts so the next tab cycle repeats safely
+            self.tab_count.set(0);
+            return Ok((0, Vec::new()));
+        }
+    }
 
     Ok((0, matches))
 }
