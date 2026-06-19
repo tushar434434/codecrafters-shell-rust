@@ -15,6 +15,7 @@ use rustyline::{
     validate::Validator,
     Context, Editor, Helper,
 };
+//Hinter:Provides gray suggestions while typing.
 //Completer:A trait (interface) that allows us to define our own tab-completion behavior.
 //Editor: Provides readline functionality.
 //Pair:Represents one completion suggestion.
@@ -51,7 +52,7 @@ impl Validator for ShellHelper {}
 
 impl Completer for ShellHelper {
     type Candidate = Pair;
-
+/*
     fn complete(
         &self,
         line: &str,
@@ -75,7 +76,44 @@ impl Completer for ShellHelper {
         Ok((0, matches))
     }
 }
+*/
+fn complete(
+    &self,
+    line: &str,
+    pos: usize,
+    _: &Context<'_>,
+) -> rustyline::Result<(usize, Vec<Pair>)> {
+    let prefix = &line[..pos];
+    // Start with builtins
+    let mut commands = vec![
+        "echo".to_string(),
+        "exit".to_string(),
+    ];
+    // Add executables from PATH
+    if let Ok(path_env) = env::var("PATH") {
+        for dir in env::split_paths(&path_env) {//path ko split kr diya 
+            // Ignore invalid directories
+            if let Ok(entries) = std::fs::read_dir(dir) {//read each line
+                for entry in entries.flatten() {//each entry is one file
+                    if let Some(name) = entry.file_name().to_str() {//extracting file name
+                        commands.push(name.to_string());//command vector mein  jod diye sb ko
+                    }
+                }
+            }
+        }
+    }
 
+    let matches = commands
+        .iter()
+        .filter(|cmd| cmd.starts_with(prefix))//comparing kr rhe hai
+        .map(|cmd| Pair {// converting into pair display and replacement
+            display: cmd.clone(),
+            replacement: format!("{} ", cmd),
+        })
+        .collect::<Vec<Pair>>();
+
+    Ok((0, matches))
+}
 
 fn main() {
     /*
