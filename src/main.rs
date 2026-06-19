@@ -33,7 +33,7 @@ fn find_executable(cmd: &str) -> Option<PathBuf> {
     None
 }
 
-#[derive(Deafult)]
+#[derive(Default)]
 struct ShellHelper;//ek empty structure banaya 
 
 impl Helper for ShellHelper {}//shellhelper can act as a helper
@@ -50,7 +50,7 @@ impl Completer for ShellHelper{//When Tab is pressed, use ShellHelper to decide 
         let prefix = &line[..pos];
         let matches =builtins
         .iter()
-        .filter(|cmd| cmd.start_with(prefix))
+        .filter(|cmd| cmd.starts_with(prefix))
         .map(|cmd| Pair{
             display: cmd.to_string(),
             replacement: format!("{}",cmd),
