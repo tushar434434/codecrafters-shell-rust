@@ -7,6 +7,15 @@ use std::process::Command; // Required to run external binaries
 use std::fs::File;//for file reading and writing
 use std::process::Stdio;
 use std::fs::OpenOptions;
+use rustyline::{
+    completion::{Completer,Pair},
+    history::DefaultHistory,Context,Editor,Helper,
+};
+//Completer:A trait (interface) that allows us to define our own tab-completion behavior.
+//Editor: Provides readline functionality.
+//Pair:Represents one completion suggestion.
+//Context:Contains information about the current state of the line editor.
+//Helper:A marker trait used by rustyline.
 // Helper function to scan PATH for an executable
 fn find_executable(cmd: &str) -> Option<PathBuf> {
     if let Ok(path_env) = env::var("PATH") {
@@ -24,7 +33,35 @@ fn find_executable(cmd: &str) -> Option<PathBuf> {
     None
 }
 
+#[derive(Deafult)]
+struct ShellHelper;//ek empty structure banaya 
+
+impl Helper for ShellHelper {}//shellhelper can act as a helper
+
+impl Completer for ShellHelper{//When Tab is pressed, use ShellHelper to decide what to complete.
+    type Candidate =Pair;
+    fn complete(//This function is automatically called when the user presses TAB.
+        &self,
+        line:&str,
+        pos:usize,
+        _:&Context<'_>,
+    ) -> rustyline::Result<(usize,Vec<Pair>)>{
+        let builtins = ["echo","exit"];
+        let prefix = &line[..pos];
+        let matches =builtins
+        .iter()
+        .filter(|cmd| cmd.start_with(prefix))
+        .map(|cmd| Pair{
+            display: cmd.to_string(),
+            replacement: format!("{}",cmd),
+        })
+        .collect();
+        Ok((0,matches))
+    }
+}
+
 fn main() {
+    /*
     loop {
         print!("$ ");
         io::stdout().flush().unwrap();
@@ -32,7 +69,14 @@ fn main() {
         let mut command = String::new();
         io::stdin().read_line(&mut command).unwrap();
         command = command.trim().to_string();
-
+*/
+        let mut r1 = Editor::<ShellHelper,DefaultHistory>::new().unwrap();
+        r1.set_helper(Some(ShellHelper::default()));
+        loop{
+            let command = match r1.readline("$ "){
+                Ok(line) => line.trim().to_string(),
+                Err(_)=>break,
+            };
         if command.is_empty() {
             continue;
         }
