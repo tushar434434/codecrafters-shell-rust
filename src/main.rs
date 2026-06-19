@@ -103,7 +103,7 @@ fn complete(
         }
     }
 }
-}
+
 
     let matches = commands
         .iter()
@@ -116,7 +116,7 @@ fn complete(
 
     Ok((0, matches))
 }
-
+}
 fn main() {
     /*
     loop {
