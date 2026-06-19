@@ -156,6 +156,11 @@ fn complete(
             println!();
             let names: Vec<String> = matches.iter().map(|m| m.display.clone()).collect();
             println!("{}", names.join("  "));
+            
+            // Re-render prompt line cleanly with the current prefix preserved
+            print!("$ {}", prefix);
+            io::stdout().flush().unwrap();
+            
             // Clear counts so the next tab cycle repeats safely
             self.tab_count.set(0);
             return Ok((0, Vec::new()));
