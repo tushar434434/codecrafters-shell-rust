@@ -51,7 +51,7 @@ impl Highlighter for ShellHelper {}
 impl Validator for ShellHelper {}
 
 impl Completer for ShellHelper {
-    type Candidate = Pair;
+    type Candidate = Pair
 /*
     fn complete(
         &self,
@@ -102,6 +102,8 @@ fn complete(
             }
         }
     }
+}
+}
 
     let matches = commands
         .iter()
