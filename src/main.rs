@@ -8,8 +8,12 @@ use std::fs::File;//for file reading and writing
 use std::process::Stdio;
 use std::fs::OpenOptions;
 use rustyline::{
-    completion::{Completer,Pair},
-    history::DefaultHistory,Context,Editor,Helper,
+    completion::{Completer, Pair},
+    history::DefaultHistory,
+    highlight::Highlighter,
+    hint::Hinter,
+    validate::Validator,
+    Context, Editor, Helper,
 };
 //Completer:A trait (interface) that allows us to define our own tab-completion behavior.
 //Editor: Provides readline functionality.
@@ -32,33 +36,46 @@ fn find_executable(cmd: &str) -> Option<PathBuf> {
     }
     None
 }
-
 #[derive(Default)]
-struct ShellHelper;//ek empty structure banaya 
+struct ShellHelper;
 
-impl Helper for ShellHelper {}//shellhelper can act as a helper
+impl Helper for ShellHelper {}
 
-impl Completer for ShellHelper{//When Tab is pressed, use ShellHelper to decide what to complete.
-    type Candidate =Pair;
-    fn complete(//This function is automatically called when the user presses TAB.
+impl Hinter for ShellHelper {
+    type Hint = String;
+}
+
+impl Highlighter for ShellHelper {}
+
+impl Validator for ShellHelper {}
+
+impl Completer for ShellHelper {
+    type Candidate = Pair;
+
+    fn complete(
         &self,
-        line:&str,
-        pos:usize,
-        _:&Context<'_>,
-    ) -> rustyline::Result<(usize,Vec<Pair>)>{
-        let builtins = ["echo","exit"];
+        line: &str,
+        pos: usize,
+        _: &Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Pair>)> {
+
+        let builtins = ["echo", "exit"];
+
         let prefix = &line[..pos];
-        let matches =builtins
-        .iter()
-        .filter(|cmd| cmd.starts_with(prefix))
-        .map(|cmd| Pair{
-            display: cmd.to_string(),
-            replacement: format!("{}",cmd),
-        })
-        .collect();
-        Ok((0,matches))
+
+        let matches = builtins
+            .iter()
+            .filter(|cmd| cmd.starts_with(prefix))
+            .map(|cmd| Pair {
+                display: cmd.to_string(),
+                replacement: format!("{} ", cmd),
+            })
+            .collect::<Vec<Pair>>();
+
+        Ok((0, matches))
     }
 }
+
 
 fn main() {
     /*
