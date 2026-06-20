@@ -348,7 +348,7 @@ fn complete(
 
     Ok((0, Vec::new()))
 }
-}
+
 fn main() {
     /*
     loop {
