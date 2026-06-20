@@ -58,6 +58,28 @@ impl Completer for ShellHelper {
         Ok((file_pos, file_candidates))
     }
 }
+fn find_executable(cmd: &str) -> Option<PathBuf> {
+    if let Ok(path_env) = env::var("PATH") {
+        for path in env::split_paths(&path_env) {
+            let exe_path = path.join(cmd);
+            if exe_path.exists() {
+                if let Ok(metadata) = exe_path.metadata() {
+                    #[cfg(unix)]
+                    {
+                        if metadata.permissions().mode() & 0o111 != 0 {
+                            return Some(exe_path);
+                        }
+                    }
+                    #[cfg(windows)]
+                    {
+                        return Some(exe_path);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
 
 // ... (Keep your existing find_executable and main function logic)
 fn main() {
