@@ -102,6 +102,40 @@ fn complete(
     _: &Context<'_>,
 ) -> rustyline::Result<(usize, Vec<Pair>)> {
     let prefix = &line[..pos];
+
+    // Check if we are completing an argument or a command name
+    if let Some(last_space_idx) = prefix.rfind(' ') {
+        let file_prefix = &prefix[last_space_idx + 1..];
+        let replace_pos = last_space_idx + 1;
+
+        let mut files = Vec::new();
+        if let Ok(current_dir) = env::current_dir() {
+            if let Ok(entries) = std::fs::read_dir(current_dir) {
+                for entry in entries.flatten() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if name.starts_with(file_prefix) {
+                            files.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        files.sort();
+        files.dedup();
+
+        if files.len() == 1 {
+            let matched_file = &files[0];
+            let pairs = vec![Pair {
+                display: matched_file.clone(),
+                replacement: format!("{} ", matched_file),
+            }];
+            return Ok((replace_pos, pairs));
+        }
+
+        return Ok((0, Vec::new()));
+    }
+
     // Start with builtins
     let mut commands = vec![
         "echo".to_string(),
@@ -127,16 +161,49 @@ fn complete(
     commands.sort();
     commands.dedup();
 
-    let matches = commands
-        .iter()
-        .filter(|cmd| cmd.starts_with(prefix))//comparing kr rhe hai
-        .map(|cmd| Pair {// converting into pair display and replacement
+    let matching_names: Vec<String> = commands
+        .into_iter()
+        .filter(|cmd| cmd.starts_with(prefix))
+        .collect();
+
+    if matching_names.is_empty() {
+        return Ok((0, Vec::new()));
+    }
+
+    if matching_names.len() == 1 {
+        // Exactly one match -> complete with a trailing space
+        let cmd = &matching_names[0];
+        let pairs = vec![Pair {
             display: cmd.clone(),
             replacement: format!("{} ", cmd),
-        })
-        .collect::<Vec<Pair>>();
+        }];
+        return Ok((0, pairs));
+    }
 
-    // Track sequential tab presses
+    // Multiple matches -> Find the Longest Common Prefix (LCP)
+    let mut lcp = matching_names[0].clone();
+    for name in matching_names.iter().skip(1) {
+        let mut common_len = 0;
+        for (c1, c2) in lcp.chars().zip(name.chars()) {
+            if c1 == c2 {
+                common_len += c1.len_utf8();
+            } else {
+                break;
+            }
+        }
+        lcp.truncate(common_len);
+    }
+
+    // If LCP is longer than current prefix, autocomplete partially (no space)
+    if lcp.len() > prefix.len() {
+        let pairs = vec![Pair {
+            display: lcp.clone(),
+            replacement: lcp,
+        }];
+        return Ok((0, pairs));
+    }
+
+    // If LCP matches current prefix, fall back to sequential tab tracking
     let mut last_p = self.last_prefix.borrow_mut();
     if *last_p == prefix {
         self.tab_count.set(self.tab_count.get() + 1);
@@ -145,29 +212,26 @@ fn complete(
         *last_p = prefix.to_string();
     }
 
-    if matches.len() > 1 {
-        if self.tab_count.get() == 1 {
-            // First tab press: ring the bell
-            print!("\x07");
-            io::stdout().flush().unwrap();
-            return Ok((0, Vec::new()));
-        } else if self.tab_count.get() == 2 {
-            // Second tab press: print options cleanly alphabetically
-            println!();
-            let names: Vec<String> = matches.iter().map(|m| m.display.clone()).collect();
-            println!("{}", names.join("  "));
-            
-            // Re-render prompt line cleanly with the current prefix preserved
-            print!("$ {}", prefix);
-            io::stdout().flush().unwrap();
-            
-            // Clear counts so the next tab cycle repeats safely
-            self.tab_count.set(0);
-            return Ok((0, Vec::new()));
-        }
+    if self.tab_count.get() == 1 {
+        // First tab press: ring the bell
+        print!("\x07");
+        io::stdout().flush().unwrap();
+        return Ok((0, Vec::new()));
+    } else if self.tab_count.get() == 2 {
+        // Second tab press: print options cleanly alphabetically
+        println!();
+        println!("{}", matching_names.join("  "));
+        
+        // Re-render prompt line cleanly with the current prefix preserved
+        print!("$ {}", prefix);
+        io::stdout().flush().unwrap();
+        
+        // Clear counts so the next tab cycle repeats safely
+        self.tab_count.set(0);
+        return Ok((0, Vec::new()));
     }
 
-    Ok((0, matches))
+    Ok((0, Vec::new()))
 }
 }
 fn main() {
