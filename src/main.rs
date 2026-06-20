@@ -110,76 +110,59 @@ fn complete(
 
         let mut files = Vec::new();
         
-        // Handle path completion if the argument contains a slash '/'
-        if let Some((dir_part, file_part)) = file_prefix.rsplit_once('/') {
-            let search_dir = if dir_part.is_empty() { 
-                PathBuf::from("/") 
-            } else { 
-                PathBuf::from(dir_part) 
-            };
+        let (dir_part, file_part) = if let Some((d, f)) = file_prefix.rsplit_once('/') {
+            (d, f)
+        } else {
+            ("", file_prefix)
+        };
 
-            if let Ok(entries) = std::fs::read_dir(search_dir) {
-                for entry in entries.flatten() {
-                    if let Some(name) = entry.file_name().to_str() {
-                        if name.starts_with(file_part) {
-                            let is_dir = entry.path().is_dir();
-                            files.push((name.to_string(), is_dir));
-                        }
-                    }
-                }
-            }
-
-            files.sort_by(|a, b| a.0.cmp(&b.0));
-            files.dedup_by(|a, b| a.0 == b.0);
-
-            if files.len() == 1 {
-                let (matched_file, is_dir) = &files[0];
-                let suffix = if *is_dir { "/" } else { " " };
-                
-                // Keep replace_pos at the start of the full word argument (replace_pos)
-                // and build the complete replacement string cleanly from there.
-                let replacement_path = if dir_part.is_empty() {
-                    format!("/{}{}", matched_file, suffix)
-                } else {
-                    format!("{}/{}{}", dir_part, matched_file, suffix)
-                };
-
-                let pairs = vec![Pair {
-                    display: matched_file.clone(),
-                    replacement: replacement_path,
-                }];
-                return Ok((replace_pos, pairs));
+        let search_dir = if dir_part.is_empty() {
+            if file_prefix.starts_with('/') {
+                PathBuf::from("/")
+            } else {
+                env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
             }
         } else {
-            // Existing current-directory behavior
-            if let Ok(current_dir) = env::current_dir() {
-                if let Ok(entries) = std::fs::read_dir(current_dir) {
-                    for entry in entries.flatten() {
-                        if let Some(name) = entry.file_name().to_str() {
-                            if name.starts_with(file_prefix) {
-                                let is_dir = entry.path().is_dir();
-                                files.push((name.to_string(), is_dir));
-                            }
-                        }
+            PathBuf::from(dir_part)
+        };
+
+        if let Ok(entries) = std::fs::read_dir(search_dir) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with(file_part) {
+                        let is_dir = entry.path().is_dir();
+                        files.push((name.to_string(), is_dir));
                     }
                 }
-            }
-
-            files.sort_by(|a, b| a.0.cmp(&b.0));
-            files.dedup_by(|a, b| a.0 == b.0);
-
-            if files.len() == 1 {
-                let (matched_file, is_dir) = &files[0];
-                let suffix = if *is_dir { "/" } else { " " };
-                let pairs = vec![Pair {
-                    display: matched_file.clone(),
-                    replacement: format!("{}{}", matched_file, suffix),
-                }];
-                return Ok((replace_pos, pairs));
             }
         }
 
-        return Ok((0, Vec::new()));
+        files.sort_by(|a, b| a.0.cmp(&b.0));
+        files.dedup_by(|a, b| a.0 == b.0);
+
+        if files.len() == 1 {
+            let (matched_file, is_dir) = &files[0];
+            let suffix = if *is_dir { "/" } else { " " };
+            
+            let replacement_path = if dir_part.is_empty() {
+                if file_prefix.starts_with('/') {
+                    format!("/{}{}", matched_file, suffix)
+                } else {
+                    format!("{}{}", matched_file, suffix)
+                }
+            } else {
+                format!("{}/{}{}", dir_part, matched_file, suffix)
+            };
+
+            let pairs = vec![Pair {
+                display: matched_file.clone(),
+                replacement: replacement_path,
+            }];
+            return Ok((replace_pos, pairs));
+        }
+
+        // Return the current position context when no single clear match is available
+        return Ok((pos, Vec::new()));
     }
 
     // Start with builtins
