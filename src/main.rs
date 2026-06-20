@@ -167,11 +167,21 @@ fn complete(
             }
 
             if lcp.len() > file_part.len() {
+                let replacement = if let Some((d, _)) = file_prefix.rsplit_once('/') {
+                    if d.is_empty() {
+                        format!("/{}", lcp)
+                    } else {
+                        format!("{}/{}", d, lcp)
+                    }
+                } else {
+                    lcp.clone()
+                };
+
                 let pairs = vec![Pair {
-                    display: lcp.clone(),
-                    replacement: lcp,
+                    display: replacement.clone(),
+                    replacement,
                 }];
-                return Ok((replace_pos, pairs));
+                return Ok((last_space_idx + 1, pairs));
             }
 
             let mut last_p = self.last_prefix.borrow_mut();
