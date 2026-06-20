@@ -107,7 +107,13 @@ fn complete(
     if let Some(last_space_idx) = prefix.rfind(' ') {
         let file_prefix = &prefix[last_space_idx + 1..];
 
-        let (search_dir, file_part, replace_pos) = if let Some((d, f)) = file_prefix.rsplit_once('/') {
+        let (search_dir, file_part, replace_pos) = if file_prefix.ends_with('/') {
+            (
+                PathBuf::from(file_prefix),
+                "",
+                pos,
+            )
+        } else if let Some((d, f)) = file_prefix.rsplit_once('/') {
             let dir_str = if d.is_empty() { "." } else { d };
             (
                 PathBuf::from(dir_str),
@@ -143,11 +149,19 @@ fn complete(
         if files.len() == 1 {
             let (matched_file, is_dir) = &files[0];
 
-            let replacement = format!(
-                "{}{}",
-                matched_file,
-                if *is_dir { "/" } else { " " }
-            );
+            let replacement = if file_prefix.ends_with('/') {
+                format!(
+                    "{}{}",
+                    matched_file,
+                    if *is_dir { "/" } else { " " }
+                )
+            } else {
+                format!(
+                    "{}{}",
+                    matched_file,
+                    if *is_dir { "/" } else { " " }
+                )
+            };
 
             let pairs = vec![Pair {
                 display: replacement.clone(),
