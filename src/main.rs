@@ -107,11 +107,19 @@ fn complete(
     if let Some(last_space_idx) = prefix.rfind(' ') {
         let file_prefix = &prefix[last_space_idx + 1..];
 
-        let (search_dir, file_part) = if let Some((d, f)) = file_prefix.rsplit_once('/') {
+        let (search_dir, file_part, replace_pos) = if let Some((d, f)) = file_prefix.rsplit_once('/') {
             let dir_str = if d.is_empty() { "." } else { d };
-            (PathBuf::from(dir_str), f)
+            (
+                PathBuf::from(dir_str),
+                f,
+                last_space_idx + 1 + d.len() + 1,
+            )
         } else {
-            (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix)
+            (
+                env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                file_prefix,
+                last_space_idx + 1,
+            )
         };
 
         let mut files = Vec::new();
@@ -135,26 +143,17 @@ fn complete(
         if files.len() == 1 {
             let (matched_file, is_dir) = &files[0];
 
-            let replacement = if let Some((d, _)) = file_prefix.rsplit_once('/') {
-                format!(
-                    "{}/{}{}",
-                    d,
-                    matched_file,
-                    if *is_dir { "/" } else { " " }
-                )
-            } else {
-                format!(
-                    "{}{}",
-                    matched_file,
-                    if *is_dir { "/" } else { " " }
-                )
-            };
+            let replacement = format!(
+                "{}{}",
+                matched_file,
+                if *is_dir { "/" } else { " " }
+            );
 
             let pairs = vec![Pair {
                 display: replacement.clone(),
                 replacement,
             }];
-            return Ok((last_space_idx + 1, pairs));
+            return Ok((replace_pos, pairs));
         } else if files.len() > 1 {
             let mut lcp = files[0].0.clone();
             for (name, _) in files.iter().skip(1) {
@@ -170,21 +169,13 @@ fn complete(
             }
 
             if lcp.len() > file_part.len() {
-                let replacement = if let Some((d, _)) = file_prefix.rsplit_once('/') {
-                    if d.is_empty() {
-                        format!("/{}", lcp)
-                    } else {
-                        format!("{}/{}", d, lcp)
-                    }
-                } else {
-                    lcp.clone()
-                };
+                let replacement = lcp.clone();
 
                 let pairs = vec![Pair {
                     display: replacement.clone(),
                     replacement,
                 }];
-                return Ok((last_space_idx + 1, pairs));
+                return Ok((replace_pos, pairs));
             }
 
             let mut last_p = self.last_prefix.borrow_mut();
