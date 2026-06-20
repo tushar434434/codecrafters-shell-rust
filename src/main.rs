@@ -1,5 +1,5 @@
 //dont change my 
-#[allow(unused_imports)]
+#![allow(unused_imports)]
 use std::io::{self, Write};
 use std::env;
 use std::path::PathBuf;
