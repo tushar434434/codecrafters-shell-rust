@@ -107,26 +107,23 @@ fn complete(
     if let Some(last_space_idx) = prefix.rfind(' ') {
         let file_prefix = &prefix[last_space_idx + 1..];
 
-        let (dir_part, file_part) = if let Some((d, f)) = file_prefix.rsplit_once('/') {
-            (d, f)
+        let (search_dir, file_part, replace_pos) = if file_prefix.ends_with('/') {
+            (PathBuf::from(file_prefix), "", last_space_idx + 1 + file_prefix.len())
+        } else if let Some((d, f)) = file_prefix.rsplit_once('/') {
+            let dir_str = if d.is_empty() { "/" } else { d };
+            let slash_idx = file_prefix.rfind('/').unwrap();
+            (PathBuf::from(dir_str), f, last_space_idx + 1 + slash_idx + 1)
         } else {
-            ("", file_prefix)
-        };
-
-        let search_dir = if dir_part.is_empty() {
-            if file_prefix.starts_with('/') {
-                PathBuf::from("/")
-            } else {
-                env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-            }
-        } else {
-            PathBuf::from(dir_part)
+            (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix, last_space_idx + 1)
         };
 
         let mut files = Vec::new();
         if let Ok(entries) = std::fs::read_dir(search_dir) {
             for entry in entries.flatten() {
                 if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with('.') && !file_part.starts_with('.') {
+                        continue;
+                    }
                     if name.starts_with(file_part) {
                         let is_dir = entry.path().is_dir();
                         files.push((name.to_string(), is_dir));
@@ -142,13 +139,6 @@ fn complete(
             let (matched_file, is_dir) = &files[0];
             let suffix = if *is_dir { "/" } else { " " };
             
-            // Fix: Calculate exact relative segment replacement start index
-            let replace_pos = if let Some(last_slash_idx) = file_prefix.rfind('/') {
-                last_space_idx + 1 + last_slash_idx + 1
-            } else {
-                last_space_idx + 1
-            };
-
             let pairs = vec![Pair {
                 display: matched_file.clone(),
                 replacement: format!("{}{}", matched_file, suffix),
