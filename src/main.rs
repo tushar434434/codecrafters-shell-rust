@@ -109,28 +109,67 @@ fn complete(
         let replace_pos = last_space_idx + 1;
 
         let mut files = Vec::new();
-        if let Ok(current_dir) = env::current_dir() {
-            if let Ok(entries) = std::fs::read_dir(current_dir) {
+        
+        // Handle path completion if the argument contains a slash '/'
+        if let Some((dir_part, file_part)) = file_prefix.rsplit_once('/') {
+            let search_dir = if dir_part.is_empty() { 
+                PathBuf::from("/") 
+            } else { 
+                PathBuf::from(dir_part) 
+            };
+
+            if let Ok(entries) = std::fs::read_dir(search_dir) {
                 for entry in entries.flatten() {
                     if let Some(name) = entry.file_name().to_str() {
-                        if name.starts_with(file_prefix) {
+                        if name.starts_with(file_part) {
                             files.push(name.to_string());
                         }
                     }
                 }
             }
-        }
 
-        files.sort();
-        files.dedup();
+            files.sort();
+            files.dedup();
 
-        if files.len() == 1 {
-            let matched_file = &files[0];
-            let pairs = vec![Pair {
-                display: matched_file.clone(),
-                replacement: format!("{} ", matched_file),
-            }];
-            return Ok((replace_pos, pairs));
+            if files.len() == 1 {
+                let matched_file = &files[0];
+                let replacement_path = if dir_part.is_empty() {
+                    format!("/{MatchingFile} ", MatchingFile = matched_file)
+                } else {
+                    format!("{Dir}/{MatchingFile} ", Dir = dir_part, MatchingFile = matched_file)
+                };
+
+                let pairs = vec![Pair {
+                    display: matched_file.clone(),
+                    replacement: replacement_path,
+                }];
+                return Ok((replace_pos, pairs));
+            }
+        } else {
+            // Existing current-directory behavior
+            if let Ok(current_dir) = env::current_dir() {
+                if let Ok(entries) = std::fs::read_dir(current_dir) {
+                    for entry in entries.flatten() {
+                        if let Some(name) = entry.file_name().to_str() {
+                            if name.starts_with(file_prefix) {
+                                files.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+
+            files.sort();
+            files.dedup();
+
+            if files.len() == 1 {
+                let matched_file = &files[0];
+                let pairs = vec![Pair {
+                    display: matched_file.clone(),
+                    replacement: format!("{} ", matched_file),
+                }];
+                return Ok((replace_pos, pairs));
+            }
         }
 
         return Ok((0, Vec::new()));
@@ -351,7 +390,7 @@ fn main() {
             else if parts[i]=="2>"{
              stderr_file=Some(parts[i+1].clone());
              i+=2;
-             continue;*/
+             continue invade*/
             else if parts[i]=="2>"{
                 stderr_file=Some(parts[i+1].clone());
                 i+=2;
