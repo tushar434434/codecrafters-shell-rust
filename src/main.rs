@@ -38,40 +38,31 @@ impl Completer for ShellHelper {
         pos: usize,
         ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Pair>)> {
-        let vec_of_commands = vec!["echo", "exit", "type", "pwd", "cd", "cat"];
+        let vec_of_commands = vec!["echo", "exit"];
         let mut candidates = Vec::new();
-        
-        // Isolate the prefix up to the cursor position
-        let prefix = &line[..pos];
 
-        // Check if we are completing a command argument or the base command
-        if let Some(last_space_idx) = prefix.rfind(' ') {
-            // ARGUMENT COMPLETION
-            let (file_pos, mut file_candidates) = self.file_comp.complete(line, pos, ctx)?;
-            
-            for pair in &mut file_candidates {
-                if !pair.replacement.ends_with('/') {
-                    pair.replacement.push(' ');
-                }
+        let (file_pos, mut file_candidates) = self.file_comp.complete(line, pos, ctx)?;
+
+        for pair in &mut file_candidates {
+            if !pair.replacement.ends_with('/') {
+                pair.replacement.push(' ');
             }
-            
-            file_candidates.sort_by(|a, b| a.display.cmp(&b.display));
-            file_candidates.dedup_by(|a, b| a.display == b.display);
-            
-            return Ok((file_pos, file_candidates));
         }
 
-        // COMMAND COMPLETION
         if let Ok(paths) = std::env::var("PATH") {
             for directory in env::split_paths(&paths) {
                 if let Ok(entries) = std::fs::read_dir(directory) {
-                    for entry in entries.flatten() {
-                        let name = entry.file_name().to_string_lossy().into_owned();
-                        if name.starts_with(prefix) {
-                            candidates.push(Pair {
-                                display: format!("{} ", name),
-                                replacement: format!("{} ", name),
-                            });
+                    for entry in entries {
+                        if let Ok(entry) = entry {
+                            if entry.file_name().to_string_lossy().starts_with(line) {
+                                candidates.push(Pair {
+                                    display: format!("{} ", entry.file_name().clone().display()),
+                                    replacement: format!(
+                                        "{} ",
+                                        entry.file_name().clone().display()
+                                    ),
+                                });
+                            }
                         }
                     }
                 }
@@ -79,7 +70,7 @@ impl Completer for ShellHelper {
         }
 
         for cmd in vec_of_commands {
-            if cmd.starts_with(prefix) {
+            if cmd.starts_with(line) {
                 candidates.push(Pair {
                     display: format!("{} ", cmd),
                     replacement: format!("{} ", cmd),
@@ -87,10 +78,19 @@ impl Completer for ShellHelper {
             }
         }
 
-        candidates.sort_by(|a, b| a.display.cmp(&b.display));
-        candidates.dedup_by(|a, b| a.display == b.display);
+        let mut all_candidates: Vec<Pair> = file_candidates;
+        all_candidates.extend(candidates);
 
-        Ok((0, candidates))
+        all_candidates.sort_by(|a, b| a.display.cmp(&b.display));
+        all_candidates.dedup_by(|a, b| a.display == b.display);
+
+        let final_pos = if line.contains(' ') || line.contains('/') {
+            file_pos
+        } else {
+            0
+        };
+
+        return Ok((final_pos, all_candidates));
     }
 }
 
@@ -166,7 +166,7 @@ impl CommandList {
         &self,
         command_vec: &Vec<&str>,
     ) -> std::result::Result<CommandResult, CommandNotFound> {
-        if command_vec.is_empty() || command_vec[0].is_empty() {
+        if command_vec.is_empty() {
             return Ok(CommandResult::NOOP);
         }
 
@@ -192,14 +192,16 @@ impl CommandList {
             "echo" => match command_vec.get(1..) {
                 Some(expression) => self.echo_cmd(expression),
                 None => Err(CommandNotFound::NotFound(format!(
-                    "Command {} not implemented",
+                    "Command {} not implemented\n 
+                    consider passing an expression after 'echo'",
                     command_vec[0]
                 ))),
             },
             "cat" => match command_vec.get(1..) {
                 Some(expression) => self.cat_cmd(expression),
                 None => Err(CommandNotFound::NotFound(format!(
-                    "Command {} not implemented",
+                    "Command {} not implemented\n 
+                    consider passing an expression after 'echo'",
                     command_vec[0]
                 ))),
             },
@@ -208,7 +210,8 @@ impl CommandList {
                 match clean_vec.get(1) {
                     Some(cmd) => self.type_cmd(cmd),
                     None => Err(CommandNotFound::NotFound(format!(
-                        "Command {} not implemented",
+                        "Command {} not implemented\n 
+                    consider passing an expression after 'echo'",
                         command_vec[0]
                     ))),
                 }
@@ -219,7 +222,8 @@ impl CommandList {
                 match clean_vec.get(1) {
                     Some(dir) => self.cd_cmd(dir),
                     None => Err(CommandNotFound::NotFound(format!(
-                        "Command {} not implemented",
+                        "Command {} not implemented\n 
+                    consider passing an expression after 'echo'",
                         command_vec[0]
                     ))),
                 }
@@ -279,9 +283,6 @@ impl CommandList {
         match line {
             Ok(input) => {
                 let cleaned = input.trim();
-                if cleaned.is_empty() {
-                    return Ok(CommandResult::NOOP);
-                }
                 let parts: Vec<&str> = cleaned.split(' ').collect();
                 self.execute_command(&parts)
             }
@@ -640,6 +641,7 @@ fn main() {
                 } => println!("{}", msg),
                 CommandResult::CD => {}
                 CommandResult::CAT => {}
+                _ => {}
             },
 
             Err(CommandNotFound::NotFound(msg)) => println!("{}", msg),
