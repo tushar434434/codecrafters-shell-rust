@@ -135,17 +135,17 @@ fn complete(
             if files.len() == 1 {
                 let (matched_file, is_dir) = &files[0];
                 let suffix = if *is_dir { "/" } else { " " };
-                let replacement_path = if dir_part.is_empty() {
-                    format!("/{MatchingFile}{Suffix}", MatchingFile = matched_file, Suffix = suffix)
-                } else {
-                    format!("{Dir}/{MatchingFile}{Suffix}", Dir = dir_part, MatchingFile = matched_file, Suffix = suffix)
-                };
+                
+                // Let's replace from the last slash index to prevent offset issues
+                let last_slash_idx = prefix.rfind('/').unwrap();
+                let exact_replace_pos = last_slash_idx + 1;
+                let replacement_path = format!("{}{}", matched_file, suffix);
 
                 let pairs = vec![Pair {
                     display: matched_file.clone(),
                     replacement: replacement_path,
                 }];
-                return Ok((replace_pos, pairs));
+                return Ok((exact_replace_pos, pairs));
             }
         } else {
             // Existing current-directory behavior
