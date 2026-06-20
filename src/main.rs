@@ -122,21 +122,23 @@ fn complete(
                 for entry in entries.flatten() {
                     if let Some(name) = entry.file_name().to_str() {
                         if name.starts_with(file_part) {
-                            files.push(name.to_string());
+                            let is_dir = entry.path().is_dir();
+                            files.push((name.to_string(), is_dir));
                         }
                     }
                 }
             }
 
-            files.sort();
-            files.dedup();
+            files.sort_by(|a, b| a.0.cmp(&b.0));
+            files.dedup_by(|a, b| a.0 == b.0);
 
             if files.len() == 1 {
-                let matched_file = &files[0];
+                let (matched_file, is_dir) = &files[0];
+                let suffix = if *is_dir { "/" } else { " " };
                 let replacement_path = if dir_part.is_empty() {
-                    format!("/{MatchingFile} ", MatchingFile = matched_file)
+                    format!("/{MatchingFile}{Suffix}", MatchingFile = matched_file, Suffix = suffix)
                 } else {
-                    format!("{Dir}/{MatchingFile} ", Dir = dir_part, MatchingFile = matched_file)
+                    format!("{Dir}/{MatchingFile}{Suffix}", Dir = dir_part, MatchingFile = matched_file, Suffix = suffix)
                 };
 
                 let pairs = vec![Pair {
@@ -152,21 +154,23 @@ fn complete(
                     for entry in entries.flatten() {
                         if let Some(name) = entry.file_name().to_str() {
                             if name.starts_with(file_prefix) {
-                                files.push(name.to_string());
+                                let is_dir = entry.path().is_dir();
+                                files.push((name.to_string(), is_dir));
                             }
                         }
                     }
                 }
             }
 
-            files.sort();
-            files.dedup();
+            files.sort_by(|a, b| a.0.cmp(&b.0));
+            files.dedup_by(|a, b| a.0 == b.0);
 
             if files.len() == 1 {
-                let matched_file = &files[0];
+                let (matched_file, is_dir) = &files[0];
+                let suffix = if *is_dir { "/" } else { " " };
                 let pairs = vec![Pair {
                     display: matched_file.clone(),
-                    replacement: format!("{} ", matched_file),
+                    replacement: format!("{}{}", matched_file, suffix),
                 }];
                 return Ok((replace_pos, pairs));
             }
@@ -390,7 +394,7 @@ fn main() {
             else if parts[i]=="2>"{
              stderr_file=Some(parts[i+1].clone());
              i+=2;
-             continue invade*/
+             continue;*/
             else if parts[i]=="2>"{
                 stderr_file=Some(parts[i+1].clone());
                 i+=2;
