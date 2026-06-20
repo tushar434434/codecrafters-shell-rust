@@ -107,12 +107,11 @@ fn complete(
     if let Some(last_space_idx) = prefix.rfind(' ') {
         let file_prefix = &prefix[last_space_idx + 1..];
 
-        let (search_dir, file_part, replace_pos) = if let Some((d, f)) = file_prefix.rsplit_once('/') {
+        let (search_dir, file_part) = if let Some((d, f)) = file_prefix.rsplit_once('/') {
             let dir_str = if d.is_empty() { "." } else { d };
-            let slash_idx = last_space_idx + 1 + d.len(); // index of the '/' character itself
-            (PathBuf::from(dir_str), f, slash_idx + 1)
+            (PathBuf::from(dir_str), f)
         } else {
-            (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix, last_space_idx + 1)
+            (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix)
         };
 
         let mut files = Vec::new();
@@ -135,15 +134,27 @@ fn complete(
 
         if files.len() == 1 {
             let (matched_file, is_dir) = &files[0];
-            let suffix = if *is_dir { "/" } else { " " };
-            
-            let replacement = format!("{}{}", matched_file, suffix);
+
+            let replacement = if let Some((d, _)) = file_prefix.rsplit_once('/') {
+                format!(
+                    "{}/{}{}",
+                    d,
+                    matched_file,
+                    if *is_dir { "/" } else { " " }
+                )
+            } else {
+                format!(
+                    "{}{}",
+                    matched_file,
+                    if *is_dir { "/" } else { " " }
+                )
+            };
 
             let pairs = vec![Pair {
                 display: replacement.clone(),
                 replacement,
             }];
-            return Ok((replace_pos, pairs));
+            return Ok((last_space_idx + 1, pairs));
         } else if files.len() > 1 {
             let mut lcp = files[0].0.clone();
             for (name, _) in files.iter().skip(1) {
