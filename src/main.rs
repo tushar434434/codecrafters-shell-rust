@@ -108,9 +108,16 @@ fn complete(
         let file_prefix = &prefix[last_space_idx + 1..];
 
         let (search_dir, file_part, replace_pos) = if let Some((d, f)) = file_prefix.rsplit_once('/') {
-            let dir_str = if d.is_empty() { "/" } else { d };
+            let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let dir_path = if d.is_empty() {
+                PathBuf::from("/")
+            } else if PathBuf::from(d).is_absolute() {
+                PathBuf::from(d)
+            } else {
+                cwd.join(d) // resolve relative to cwd explicitly, avoid relying on implicit relative read_dir
+            };
             let slash_idx = last_space_idx + 1 + d.len(); // index of the '/' character itself
-            (PathBuf::from(dir_str), f, slash_idx + 1)
+            (dir_path, f, slash_idx + 1)
         } else {
             (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix, last_space_idx + 1)
         };
@@ -167,6 +174,93 @@ fn complete(
 
         return Ok((pos, Vec::new()));
     }
+
+    // Start with builtins
+    let mut commands = vec![
+        "echo".to_string(),
+        "exit".to_string(),
+        "type".to_string(),
+        "pwd".to_string(),
+        "cd".to_string(),
+    ];
+    // Add executables from PATH
+    if let Ok(path_env) = env::var("PATH") {
+        for dir in env::split_paths(&path_env) {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        commands.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    commands.sort();
+    commands.dedup();
+
+    let matching_names: Vec<String> = commands
+        .into_iter()
+        .filter(|cmd| cmd.starts_with(prefix))
+        .collect();
+
+    if matching_names.is_empty() {
+        return Ok((0, Vec::new()));
+    }
+
+    if matching_names.len() == 1 {
+        let cmd = &matching_names[0];
+        let pairs = vec![Pair {
+            display: cmd.clone(),
+            replacement: format!("{} ", cmd),
+        }];
+        return Ok((0, pairs));
+    }
+
+    let mut lcp = matching_names[0].clone();
+    for name in matching_names.iter().skip(1) {
+        let mut common_len = 0;
+        for (c1, c2) in lcp.chars().zip(name.chars()) {
+            if c1 == c2 {
+                common_len += c1.len_utf8();
+            } else {
+                break;
+            }
+        }
+        lcp.truncate(common_len);
+    }
+
+    if lcp.len() > prefix.len() {
+        let pairs = vec![Pair {
+            display: lcp.clone(),
+            replacement: lcp,
+        }];
+        return Ok((0, pairs));
+    }
+
+    let mut last_p = self.last_prefix.borrow_mut();
+    if *last_p == prefix {
+        self.tab_count.set(self.tab_count.get() + 1);
+    } else {
+        self.tab_count.set(1);
+        *last_p = prefix.to_string();
+    }
+
+    if self.tab_count.get() == 1 {
+        print!("\x07");
+        io::stdout().flush().unwrap();
+        return Ok((0, Vec::new()));
+    } else if self.tab_count.get() == 2 {
+        println!();
+        println!("{}", matching_names.join("  "));
+        print!("$ {}", prefix);
+        io::stdout().flush().unwrap();
+        self.tab_count.set(0);
+        return Ok((0, Vec::new()));
+    }
+
+    Ok((0, Vec::new()))
+}
 
     // Start with builtins
     let mut commands = vec![
