@@ -1,4 +1,4 @@
-#[allow(unused_imports)]
+dont change my #[allow(unused_imports)]
 use std::io::{self, Write};
 use std::env;
 use std::path::PathBuf;
@@ -206,7 +206,13 @@ fn complete(
                 return Ok((pos, Vec::new()));
             } else if self.tab_count.get() == 2 {
                 println!();
-                let display_names: Vec<String> = files.iter().map(|f| f.0.clone()).collect();
+                let display_names: Vec<String> = files.iter().map(|(name, is_dir)| {
+                    if *is_dir {
+                        format!("{}/", name)
+                    } else {
+                        name.clone()
+                    }
+                }).collect();
                 println!("{}", display_names.join("  "));
                 print!("$ {}", prefix);
                 io::stdout().flush().unwrap();
