@@ -137,11 +137,21 @@ fn complete(
             let (matched_file, is_dir) = &files[0];
             let suffix = if *is_dir { "/" } else { " " };
             
+            let replacement = if let Some((d, _)) = file_prefix.rsplit_once('/') {
+                if d.is_empty() {
+                    format!("/{}{}", matched_file, suffix)
+                } else {
+                    format!("{}/{}{}", d, matched_file, suffix)
+                }
+            } else {
+                format!("{}{}", matched_file, suffix)
+            };
+
             let pairs = vec![Pair {
-                display: matched_file.clone(),
-                replacement: format!("{}{}", matched_file, suffix),
+                display: replacement.clone(),
+                replacement,
             }];
-            return Ok((replace_pos, pairs));
+            return Ok((last_space_idx + 1, pairs));
         } else if files.len() > 1 {
             let mut lcp = files[0].0.clone();
             for (name, _) in files.iter().skip(1) {
