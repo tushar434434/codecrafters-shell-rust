@@ -3,8 +3,8 @@ use std::io::{self, Write};
 use std::env;
 use std::path::PathBuf;
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command; // Required to run external binaries
-use std::fs::File;//for file reading and writing
+use std::process::Command; 
+use std::fs::File;
 use std::process::Stdio;
 use std::fs::OpenOptions;
 use rustyline::{
@@ -16,13 +16,7 @@ use rustyline::{
     Context, Editor, Helper,
 };
 use std::cell::{Cell, RefCell};
-//Hinter:Provides gray suggestions while typing.
-//Completer:A trait (interface) that allows us to define our own tab-completion behavior.
-//Editor: Provides readline functionality.
-//Pair:Represents one completion suggestion.
-//Context:Contains information about the current state of the line editor.
-//Helper:A marker trait used by rustyline.
-// Helper function to scan PATH for an executable
+
 fn find_executable(cmd: &str) -> Option<PathBuf> {
     if let Ok(path_env) = env::var("PATH") {
         for path in env::split_paths(&path_env) {
@@ -38,13 +32,7 @@ fn find_executable(cmd: &str) -> Option<PathBuf> {
     }
     None
 }
-/*
-#[derive(Default)]
-struct ShellHelper{ //because self is immutable
-    last_prefix:String,
-    tab_count:usize,
-}
-*/
+
 struct ShellHelper {
     file_comp: FilenameCompleter,
 }
@@ -78,77 +66,45 @@ impl Completer for ShellHelper {
         self.file_comp.complete(line, pos, ctx)
     }
 }
-fn main() {
-    /*
-    loop {
-        print!("$ ");
-        io::stdout().flush().unwrap();
 
-        let mut command = String::new();
-        io::stdin().read_line(&mut command).unwrap();
-        command = command.trim().to_string();
-*/
-        let mut r1 = Editor::<ShellHelper,DefaultHistory>::new().unwrap();
-        r1.set_helper(Some(ShellHelper::default()));
-        loop{
-            let command = match r1.readline("$ "){
-                Ok(line) => line.trim().to_string(),
-                Err(_)=>break,
-            };
+fn main() {
+    let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
+    r1.set_helper(Some(ShellHelper::default()));
+    loop {
+        let command = match r1.readline("$ ") {
+            Ok(line) => line.trim().to_string(),
+            Err(_) => break,
+        };
         if command.is_empty() {
             continue;
         }
 
-        // 1. Split the command string into parts (program name + arguments)
-        // let parts: Vec<&str> = command.split_whitespace().collect();
-
         let mut parts: Vec<String> = Vec::new();
         let mut current = String::new();
         let mut in_quotes = false;
-        let mut double_quotes =false;
-        let mut escape=false;
+        let mut double_quotes = false;
+        let mut escape = false;
 
         for c in command.chars() {
             if escape {
                 current.push(c);
                 escape = false;
-            }
-
-            /* else if c == '\\' && !in_quotes && !double_quotes {
-                escape = true;
-            }*/else if c == '\\' {
-
-                if double_quotes {
-
-                    // In double quotes, only " and \ are escapable in this stage
+            } else if c == '\\' {
+                if double_quotes || !in_quotes {
                     escape = true;
-
-                } else if !in_quotes {
-
-                    // Outside quotes, everything can be escaped
-                    escape = true;
-
                 } else {
-
-                    // Inside single quotes, backslash is literal
                     current.push(c);
-
                 }
-            }
-
-            else if c == '\'' && !double_quotes {
+            } else if c == '\'' && !double_quotes {
                 in_quotes = !in_quotes;
-            }
-            else if c == '"' && !in_quotes{
-                double_quotes =! double_quotes;
-            }
-            else if c.is_whitespace() && !in_quotes && !double_quotes {
+            } else if c == '"' && !in_quotes {
+                double_quotes = !double_quotes;
+            } else if c.is_whitespace() && !in_quotes && !double_quotes {
                 if !current.is_empty() {
                     parts.push(current.clone());
                     current.clear();
                 }
-            }
-            else {
+            } else {
                 current.push(c);
             }
         }
@@ -158,234 +114,105 @@ fn main() {
         }
 
         let cmd_name = &parts[0];
-        //   let args = &parts[1..];
-        // let mut redirect_file=None;
-        let mut stdout_file=None;
-        let mut stderr_file=None;
-        let mut append_stdout=false;
-        let mut append_stderr=false;
+        let mut stdout_file = None;
+        let mut stderr_file = None;
+        let mut append_stdout = false;
+        let mut append_stderr = false;
 
-        let mut args =Vec::new();
-        let mut i=1;
-        /*
-        while i < parts.len(){
-           if parts[i] == ">" || parts[i]=="1>"{
-               stdout_file =Some(parts[i+1].clone());
-               break;
-           }
-           else if parts[i]=="2>"{
-               stderr_file=Some(parts[i+1].clone());
-               break;
-           }
-
-           args.push(parts[i].clone());
-           i+=1;
-        }*/ while i < parts.len(){
-            if parts[i] == ">" || parts[i]=="1>"{
-                stdout_file =Some(parts[i+1].clone());
-                i+=2;
+        let mut args = Vec::new();
+        let mut i = 1;
+        while i < parts.len() {
+            if parts[i] == ">" || parts[i] == "1>" {
+                stdout_file = Some(parts[i + 1].clone());
+                i += 2;
+                continue;
+            } else if parts[i] == ">>" || parts[i] == "1>>" {
+                stdout_file = Some(parts[i + 1].clone());
+                append_stdout = true;
+                i += 2;
+                continue;
+            } else if parts[i] == "2>" {
+                stderr_file = Some(parts[i + 1].clone());
+                i += 2;
+                continue;
+            } else if parts[i] == "2>>" {
+                stderr_file = Some(parts[i + 1].clone());
+                append_stderr = true;
+                i += 2;
                 continue;
             }
-            else if parts[i] == ">>" || parts[i] == "1>>"{
-                stdout_file =Some(parts[i+1].clone());
-                append_stdout=true;
-                i+=2;
-                continue;
-            }/*
-            else if parts[i]=="2>"{
-             stderr_file=Some(parts[i+1].clone());
-             i+=2;
-             continue;*/
-            else if parts[i]=="2>"{
-                stderr_file=Some(parts[i+1].clone());
-                i+=2;
-                continue;
-            }
-            else if parts[i]=="2>>"{
-                stderr_file=Some(parts[i+1].clone());
-                append_stderr=true;
-                i+=2;
-                continue;
-            }
-            
-
             args.push(parts[i].clone());
-            i+=1;
+            i += 1;
         }
-        // 2. Evaluate builtins or look for external commands
+
         if cmd_name == "exit" {
             break;
-        }
-        else if cmd_name == "complete" {
+        } else if cmd_name == "complete" {
             if args.len() >= 2 && args[0] == "-p" {
                 println!("complete: {}: no completion specification", args[1]);
             }
-        }
-        /*
-        else if cmd_name == "echo" {
-           // println!("{}", args.join(" "));
-           let output =args.join(" ");
-           if let Some(file_name) = &stdout_file{
-            std::fs::write(file_name,format!("{}\n",output)).unwrap();
-           }
-           else {
-            println!("{}",output);
-           }
-        }*/
-        else if cmd_name == "echo" {
-            // println!("{}", args.join(" "));
-            let output =args.join(" ");
-
-            if let Some(file_name) = &stdout_file{
-                if append_stdout{
-                    let mut file = OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(file_name)
-                        .unwrap();
-
-                    writeln!(file,"{}",output).unwrap();
+        } else if cmd_name == "echo" {
+            let output = args.join(" ");
+            if let Some(file_name) = &stdout_file {
+                if append_stdout {
+                    let mut file = OpenOptions::new().create(true).append(true).open(file_name).unwrap();
+                    writeln!(file, "{}", output).unwrap();
+                } else {
+                    std::fs::write(file_name, format!("{}\n", output)).unwrap();
                 }
-                else{
-                    std::fs::write(file_name,format!("{}\n",output)).unwrap();
-                }
+            } else {
+                println!("{}", output);
             }
-            else {
-                println!("{}",output);
-            }
-
-            // if let Some(file_name) = &stderr_file{
-                // let _file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
-            //}
-            if let Some(file_name) = &stderr_file{
-                if append_stderr{
-                    let _file = OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(file_name)
-                        .unwrap();
-                }
-                else{
-                    let _file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
-                }
-            }
-        }
-        else if cmd_name == "type" {
+        } else if cmd_name == "type" {
             let arg = &args[0];
-
-            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" {
+            // Added "complete" to the list of known builtins
+            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete" {
                 println!("{} is a shell builtin", arg);
-            }
-            else if let Some(path) = find_executable(arg) {
+            } else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
-            }
-            else {
+            } else {
                 println!("{}: not found", arg);
             }
-        }
-        else if cmd_name == "pwd" {
-            match env::current_dir() { //builtin function hota hai
-                Ok(path) => println!("{}", path.display()), //agr path hai to dispaly kr diya hai
-                Err(_) => eprintln!("pwd: unable to get current directory"), //agr path ni milla to error handling kr li
+        } else if cmd_name == "pwd" {
+            match env::current_dir() {
+                Ok(path) => println!("{}", path.display()),
+                Err(_) => eprintln!("pwd: unable to get current directory"),
             }
-        }
-        else if cmd_name == "cd" {
+        } else if cmd_name == "cd" {
             let dir = &args[0];
-
             if dir == "~" {
                 if let Ok(home) = env::var("HOME") {
                     env::set_current_dir(home).unwrap();
                 }
-            }
-
-            else if let Err(_) = env::set_current_dir(dir) { //"Please make /usr/local/bin the current working directory."
-                //if successfull it will return Ok(()) otherwise will give error
+            } else if let Err(_) = env::set_current_dir(dir) {
                 println!("cd: {}: No such file or directory", dir);
             }
-        }
-
-        else {
-            // 3. Global fallback: Check if the base command exists in PATH
+        } else {
             if let Some(_path) = find_executable(cmd_name) {
-
-                /* let args_ref: Vec<&str> = args
-                       .iter()
-                       .map(|s| s.as_str())
-                       .collect();
-
-                   // Spawn the process using the command name and pass the arguments slice
-                   let mut child = Command::new(cmd_name)
-                       .args(args_ref)
-                       .spawn()
-                       .unwrap();
-
-                   // Wait for the program to finish before displaying the next prompt
-                   child.wait().unwrap();*/
-                let args_ref: Vec<&str> = args
-                        .iter()
-                        .map(|s| s.as_str())
-                        .collect();
+                let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
                 let mut cmd = Command::new(cmd_name);
                 cmd.args(args_ref);
-                /*
-                if let Some(file_name) = &redirect_file {
-                let file = File::create(file_name).unwrap();
-                cmd.stdout(Stdio::from(file));
-                }
-                */
-                /*
                 if let Some(file_name) = &stdout_file {
-                let file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
-                cmd.stdout(Stdio::from(file));
-                }
-
-                if let Some(file_name) = &stderr_file {
-                let file = File::create(file_name).unwrap();
-                cmd.stderr(Stdio::from(file));
-                }*/
-                
-                if let Some(file_name) = &stdout_file {
-                    if append_stdout{
-                        let file = OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(file_name)
-                            .unwrap();
-
+                    if append_stdout {
+                        let file = OpenOptions::new().create(true).append(true).open(file_name).unwrap();
+                        cmd.stdout(Stdio::from(file));
+                    } else {
+                        let file = File::create(file_name).unwrap();
                         cmd.stdout(Stdio::from(file));
                     }
-                    else{
-                        let file = File::create(file_name).unwrap();//agr file nhi hai to nai bana do
-                        cmd.stdout(Stdio::from(file));
-                    }
-                }/*
+                }
                 if let Some(file_name) = &stderr_file {
-                    let file = File::create(file_name).unwrap();
-                    cmd.stderr(Stdio::from(file));*/
-                if let Some(file_name) = &stderr_file {
-                    if append_stderr{
-                        let file = OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(file_name)
-                            .unwrap();
-
+                    if append_stderr {
+                        let file = OpenOptions::new().create(true).append(true).open(file_name).unwrap();
                         cmd.stderr(Stdio::from(file));
-                    }
-                    else{
+                    } else {
                         let file = File::create(file_name).unwrap();
                         cmd.stderr(Stdio::from(file));
                     }
                 }
-                // Spawn the process using the command name and pass the arguments slice
-                let mut child = cmd
-                    .spawn()
-                    .unwrap();
-
-                // Wait for the program to finish before displaying the next prompt
+                let mut child = cmd.spawn().unwrap();
                 child.wait().unwrap();
-            }
-            else {
+            } else {
                 println!("{}: command not found", command);
             }
         }
