@@ -106,10 +106,7 @@ fn complete(
     // Check if we are completing an argument or a command name
     if let Some(last_space_idx) = prefix.rfind(' ') {
         let file_prefix = &prefix[last_space_idx + 1..];
-        let replace_pos = last_space_idx + 1;
 
-        let mut files = Vec::new();
-        
         let (dir_part, file_part) = if let Some((d, f)) = file_prefix.rsplit_once('/') {
             (d, f)
         } else {
@@ -126,6 +123,7 @@ fn complete(
             PathBuf::from(dir_part)
         };
 
+        let mut files = Vec::new();
         if let Ok(entries) = std::fs::read_dir(search_dir) {
             for entry in entries.flatten() {
                 if let Some(name) = entry.file_name().to_str() {
@@ -144,24 +142,20 @@ fn complete(
             let (matched_file, is_dir) = &files[0];
             let suffix = if *is_dir { "/" } else { " " };
             
-            let replacement_path = if dir_part.is_empty() {
-                if file_prefix.starts_with('/') {
-                    format!("/{}{}", matched_file, suffix)
-                } else {
-                    format!("{}{}", matched_file, suffix)
-                }
+            // Fix: Calculate exact relative segment replacement start index
+            let replace_pos = if let Some(last_slash_idx) = file_prefix.rfind('/') {
+                last_space_idx + 1 + last_slash_idx + 1
             } else {
-                format!("{}/{}{}", dir_part, matched_file, suffix)
+                last_space_idx + 1
             };
 
             let pairs = vec![Pair {
                 display: matched_file.clone(),
-                replacement: replacement_path,
+                replacement: format!("{}{}", matched_file, suffix),
             }];
             return Ok((replace_pos, pairs));
         }
 
-        // Return the current position context when no single clear match is available
         return Ok((pos, Vec::new()));
     }
 
@@ -175,12 +169,11 @@ fn complete(
     ];
     // Add executables from PATH
     if let Ok(path_env) = env::var("PATH") {
-        for dir in env::split_paths(&path_env) {//path ko split kr diya 
-            // Ignore invalid directories
-            if let Ok(entries) = std::fs::read_dir(dir) {//read each line
-                for entry in entries.flatten() {//each entry is one file
-                    if let Some(name) = entry.file_name().to_str() {//extracting file name
-                        commands.push(name.to_string());//command vector mein jod diye sb ko
+        for dir in env::split_paths(&path_env) {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        commands.push(name.to_string());
                     }
                 }
             }
@@ -200,7 +193,6 @@ fn complete(
     }
 
     if matching_names.len() == 1 {
-        // Exactly one match -> complete with a trailing space
         let cmd = &matching_names[0];
         let pairs = vec![Pair {
             display: cmd.clone(),
@@ -209,7 +201,6 @@ fn complete(
         return Ok((0, pairs));
     }
 
-    // Multiple matches -> Find the Longest Common Prefix (LCP)
     let mut lcp = matching_names[0].clone();
     for name in matching_names.iter().skip(1) {
         let mut common_len = 0;
@@ -223,7 +214,6 @@ fn complete(
         lcp.truncate(common_len);
     }
 
-    // If LCP is longer than current prefix, autocomplete partially (no space)
     if lcp.len() > prefix.len() {
         let pairs = vec![Pair {
             display: lcp.clone(),
@@ -232,7 +222,6 @@ fn complete(
         return Ok((0, pairs));
     }
 
-    // If LCP matches current prefix, fall back to sequential tab tracking
     let mut last_p = self.last_prefix.borrow_mut();
     if *last_p == prefix {
         self.tab_count.set(self.tab_count.get() + 1);
@@ -242,20 +231,14 @@ fn complete(
     }
 
     if self.tab_count.get() == 1 {
-        // First tab press: ring the bell
         print!("\x07");
         io::stdout().flush().unwrap();
         return Ok((0, Vec::new()));
     } else if self.tab_count.get() == 2 {
-        // Second tab press: print options cleanly alphabetically
         println!();
         println!("{}", matching_names.join("  "));
-        
-        // Re-render prompt line cleanly with the current prefix preserved
         print!("$ {}", prefix);
         io::stdout().flush().unwrap();
-        
-        // Clear counts so the next tab cycle repeats safely
         self.tab_count.set(0);
         return Ok((0, Vec::new()));
     }
