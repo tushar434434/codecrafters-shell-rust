@@ -107,12 +107,10 @@ fn complete(
     if let Some(last_space_idx) = prefix.rfind(' ') {
         let file_prefix = &prefix[last_space_idx + 1..];
 
-        let (search_dir, file_part, replace_pos) = if file_prefix.ends_with('/') {
-            (PathBuf::from(file_prefix), "", last_space_idx + 1 + file_prefix.len())
-        } else if let Some((d, f)) = file_prefix.rsplit_once('/') {
+        let (search_dir, file_part, replace_pos) = if let Some((d, f)) = file_prefix.rsplit_once('/') {
             let dir_str = if d.is_empty() { "/" } else { d };
-            let slash_idx = file_prefix.rfind('/').unwrap();
-            (PathBuf::from(dir_str), f, last_space_idx + 1 + slash_idx + 1)
+            let slash_idx = last_space_idx + 1 + d.len(); // index of the '/' character itself
+            (PathBuf::from(dir_str), f, slash_idx + 1)
         } else {
             (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix, last_space_idx + 1)
         };
@@ -144,6 +142,27 @@ fn complete(
                 replacement: format!("{}{}", matched_file, suffix),
             }];
             return Ok((replace_pos, pairs));
+        } else if files.len() > 1 {
+            let mut lcp = files[0].0.clone();
+            for (name, _) in files.iter().skip(1) {
+                let mut common_len = 0;
+                for (c1, c2) in lcp.chars().zip(name.chars()) {
+                    if c1 == c2 {
+                        common_len += c1.len_utf8();
+                    } else {
+                        break;
+                    }
+                }
+                lcp.truncate(common_len);
+            }
+
+            if lcp.len() > file_part.len() {
+                let pairs = vec![Pair {
+                    display: lcp.clone(),
+                    replacement: lcp,
+                }];
+                return Ok((replace_pos, pairs));
+            }
         }
 
         return Ok((pos, Vec::new()));
