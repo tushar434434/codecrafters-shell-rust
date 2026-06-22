@@ -349,6 +349,7 @@ fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
     
+    // Store background processes as: (job_id, pid, command_string)
     let mut bg_jobs: Vec<(u32, u32, String)> = Vec::new();
     let mut job_counter = 0;
 
@@ -367,6 +368,7 @@ fn main() {
             continue;
         }
 
+        // Clean completed processes out of our vector array dynamically
         bg_jobs.retain(|&(_, pid, _)| {
             match Command::new("ps").arg("-p").arg(pid.to_string()).output() {
                 Ok(out) => out.status.success(),
@@ -538,8 +540,17 @@ fn main() {
                 println!("cd: {}: No such file or directory", dir);
             }
         } else if cmd_name == "jobs" {
-            for (j_id, _pid, full_cmd) in &bg_jobs {
-                println!("[{}]+  Running                 {} &", j_id, full_cmd);
+            let total_jobs = bg_jobs.len();
+            for (idx, (j_id, _pid, full_cmd)) in bg_jobs.iter().enumerate() {
+                // Determine Bash-specific marker character based on active tracking list index recency
+                let marker = if idx == total_jobs - 1 {
+                    "+"
+                } else if total_jobs >= 2 && idx == total_jobs - 2 {
+                    "-"
+                } else {
+                    " "
+                };
+                println!("[{}]{}  Running                 {} &", j_id, marker, full_cmd);
             }
         } else {
             if let Some(_path) = find_executable(&cmd_name) {
@@ -585,6 +596,7 @@ fn main() {
                     job_counter += 1;
                     let pid = child.id();
                     println!("[{}] {}", job_counter, pid);
+                    
                     let trailing_args = args.join(" ");
                     let full_cmd_str = if trailing_args.is_empty() {
                         cmd_name
