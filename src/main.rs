@@ -346,12 +346,41 @@ impl Completer for ShellHelper {
     }
 }
 
-// Dedicated logic to sweep completed child tasks and print state transitions
-fn reap_background_jobs(bg_jobs: &mut Vec<(u32, Child, String)>, show_running: bool) {
-    let total_jobs = bg_jobs.len();
-    let mut active_jobs = Vec::new();
+fn reap_background_jobs(bg_jobs: &mut Vec<(u32, Child, String)>) {
+    let mut updated_jobs = Vec::new();
+    let mut finished_jobs = Vec::new();
 
-    for (idx, (j_id, child, full_cmd)) in bg_jobs.iter_mut().enumerate() {
+    for (id, mut child, cmd) in bg_jobs.drain(..) {
+        match child.try_wait() {
+            Ok(Some(_status)) => {
+                finished_jobs.push((id, cmd));
+            }
+            _ => {
+                updated_jobs.push((id, child, cmd));
+            }
+        }
+    }
+
+    updated_jobs.sort_by_key(|(id, _, _)| *id);
+
+    let total_active = updated_jobs.len();
+    for (id, cmd) in finished_jobs {
+        let marker = if total_active == 0 {
+            "+"
+        } else {
+            " "
+        };
+        println!("[{}]{}  Done                    {}", id, marker, cmd);
+    }
+
+    *bg_jobs = updated_jobs;
+}
+
+fn display_jobs_builtin(bg_jobs: &mut Vec<(u32, Child, String)>) {
+    reap_background_jobs(bg_jobs);
+    
+    let total_jobs = bg_jobs.len();
+    for (idx, (id, _, cmd)) in bg_jobs.iter().enumerate() {
         let marker = if idx == total_jobs - 1 {
             "+"
         } else if total_jobs >= 2 && idx == total_jobs - 2 {
@@ -359,29 +388,8 @@ fn reap_background_jobs(bg_jobs: &mut Vec<(u32, Child, String)>, show_running: b
         } else {
             " "
         };
-
-        match child.try_wait() {
-            Ok(Some(_status)) => {
-                // Job just exited normally -> print "Done" state once and do not preserve it
-                println!("[{}]{}  Done                    {}", j_id, marker, full_cmd);
-            }
-            _ => {
-                // Job is still currently executing -> preserve it in active jobs track
-                if show_running {
-                    println!("[{}]{}  Running                 {} &", j_id, marker, full_cmd);
-                }
-                active_jobs.push((*j_id, child, full_cmd.clone()));
-            }
-        }
+        println!("[{}]{}  Running                 {} &", id, marker, cmd);
     }
-
-    // Safely collect only items that are still active
-    *bg_jobs = active_jobs.into_iter().map(|(id, child, cmd)| {
-        unsafe {
-            let child_raw = std::ptr::read(child);
-            (id, child_raw, cmd)
-        }
-    }).collect();
 }
 
 fn main() {
@@ -389,7 +397,6 @@ fn main() {
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
     
     let mut bg_jobs: Vec<(u32, Child, String)> = Vec::new();
-    let mut job_counter = 0;
 
     r1.set_helper(Some(ShellHelper {
         last_prefix: RefCell::new(String::new()),
@@ -398,8 +405,7 @@ fn main() {
     }));
 
     loop {
-        // 1. Automatic Reaping: Check for completed jobs immediately before showing the prompt line
-        reap_background_jobs(&mut bg_jobs, false);
+        reap_background_jobs(&mut bg_jobs);
 
         let command = match r1.readline("$ ") {
             Ok(line) => line.trim().to_string(),
@@ -573,8 +579,7 @@ fn main() {
                 println!("cd: {}: No such file or directory", dir);
             }
         } else if cmd_name == "jobs" {
-            // 2. Builtin Reaping: Check for completed transitions right now, printing active statuses too
-            reap_background_jobs(&mut bg_jobs, true);
+            display_jobs_builtin(&mut bg_jobs);
         } else {
             if let Some(_path) = find_executable(&cmd_name) {
                 let args_ref: Vec<&str> = args
@@ -616,9 +621,14 @@ fn main() {
                     .unwrap();
 
                 if is_background {
-                    job_counter += 1;
+                    let assigned_id = if bg_jobs.is_empty() {
+                        1
+                    } else {
+                        bg_jobs.iter().map(|(id, _, _)| *id).max().unwrap() + 1
+                    };
+
                     let pid = child.id();
-                    println!("[{}] {}", job_counter, pid);
+                    println!("[{}] {}", assigned_id, pid);
                     
                     let trailing_args = args.join(" ");
                     let full_cmd_str = if trailing_args.is_empty() {
@@ -626,7 +636,7 @@ fn main() {
                     } else {
                         format!("{} {}", cmd_name, trailing_args)
                     };
-                    bg_jobs.push((job_counter, child, full_cmd_str.trim().to_string()));
+                    bg_jobs.push((assigned_id, child, full_cmd_str.trim().to_string()));
                 } else {
                     child.wait().unwrap();
                 }
