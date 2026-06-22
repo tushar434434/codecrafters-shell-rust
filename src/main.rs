@@ -511,6 +511,16 @@ fn main() {
                 println!("{}: not found", arg);
             }
         }
+        else if cmd_name == "complete" {
+         if args.len() >= 2 && args[0] == "-p" {
+        let cmd = &args[1];
+        println!("complete: {}: no completion specification", cmd);
+         } else {
+        if !args.is_empty() && args[0] != "-p" {
+            eprintln!("complete: flags other than -p are not yet supported");
+            }
+            }
+        }
         else if cmd_name == "pwd" {
             match env::current_dir() { //builtin function hota hai
                 Ok(path) => println!("{}", path.display()), //agr path hai to dispaly kr diya hai
