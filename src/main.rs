@@ -349,30 +349,32 @@ impl Completer for ShellHelper {
 fn reap_background_jobs(bg_jobs: &mut Vec<(u32, Child, String)>) {
     let mut updated_jobs = Vec::new();
     let mut finished_jobs = Vec::new();
-    let total_jobs = bg_jobs.len();
-    for (idx, (id, mut child, cmd)) in bg_jobs.drain(..).enumerate() {
-        let marker = if idx == total_jobs - 1 {
-            "+"
-        } else if total_jobs >= 2 && idx == total_jobs - 2 {
-            "-"
-        } else {
-            " "
-        };
+
+    // 1. Check statuses and separate
+    for (id, mut child, cmd) in bg_jobs.drain(..) {
         match child.try_wait() {
             Ok(Some(_status)) => {
-                finished_jobs.push((id, marker, cmd));
+                finished_jobs.push((id, cmd));
             }
             _ => {
                 updated_jobs.push((id, child, cmd));
             }
         }
     }
+
+    // Always sort updated jobs by id to preserve stable order
     updated_jobs.sort_by_key(|(id, _, _)| *id);
-    for (id, marker, cmd) in finished_jobs {
+
+    // 2. Print finished jobs using accurate markers contextually matching the active snapshot
+    let total_active = updated_jobs.len();
+    for (id, cmd) in finished_jobs {
+        let marker = if total_active == 0 { "+" } else { " " };
         println!("[{}]{}  Done                    {}", id, marker, cmd);
     }
+
     *bg_jobs = updated_jobs;
 }
+
 fn display_jobs_builtin(bg_jobs: &mut Vec<(u32, Child, String)>) {
     reap_background_jobs(bg_jobs);
     
