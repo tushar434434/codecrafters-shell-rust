@@ -588,8 +588,9 @@ fn main() {
                 println!("cd: {}: No such file or directory", dir);
             }
         } else if cmd_name == "jobs" {
-            reap_jobs(&mut bg_jobs, &mut current_job_id, &mut previous_job_id);
-            for job in &bg_jobs {
+            let mut finished = Vec::new();
+
+            for job in &mut bg_jobs {
                 let marker = if current_job_id == Some(job.job_id) {
                     "+"
                 } else if previous_job_id == Some(job.job_id) {
@@ -597,7 +598,30 @@ fn main() {
                 } else {
                     " "
                 };
-                println!("[{}]{}  Running                {} &", job.job_id, marker, job.command_str);
+
+                match job.child.try_wait() {
+                    Ok(Some(_status)) => {
+                        println!("[{}]{}  Done                 {}", job.job_id, marker, job.command_str);
+                        finished.push(job.job_id);
+                    }
+                    Ok(None) => {
+                        println!("[{}]{}  Running                {} &", job.job_id, marker, job.command_str);
+                    }
+                    Err(_) => {
+                        finished.push(job.job_id);
+                    }
+                }
+            }
+
+            // Post-print cleanup preserves job table printing sequence
+            for removed_id in &finished {
+                bg_jobs.retain(|j| j.job_id != *removed_id);
+                if current_job_id == Some(*removed_id) {
+                    current_job_id = previous_job_id;
+                    previous_job_id = None;
+                } else if previous_job_id == Some(*removed_id) {
+                    previous_job_id = None;
+                }
             }
         } else {
             if let Some(_path) = find_executable(&cmd_name) {
