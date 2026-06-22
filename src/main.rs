@@ -455,7 +455,7 @@ fn main() {
         } else if cmd_name == "type" {
             let arg = &args[0];
 
-            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete" {
+            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete" || arg="jobs" {
                 println!("{} is a shell builtin", arg);
             } else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
@@ -498,7 +498,10 @@ fn main() {
             } else if let Err(_) = env::set_current_dir(dir) {
                 println!("cd: {}: No such file or directory", dir);
             }
-        } else {
+        }else if cmd_name=="jobs"{
+            
+        }
+         else {
             if let Some(_path) = find_executable(cmd_name) {
                 let args_ref: Vec<&str> = args
                     .iter()
