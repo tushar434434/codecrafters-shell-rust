@@ -383,7 +383,7 @@ fn main() {
                     };
                     
                     // Print termination line: [1]+ Done                 cat /tmp/mango-17 &
-                    println!("[{}]{} Done                 {} &", removed_id, marker, cmd_str);
+                    println!("[{}]{}  Done                 {} &", removed_id, marker, cmd_str);
                     
                     bg_jobs.remove(i);
                     if current_job_id == Some(removed_id) {
