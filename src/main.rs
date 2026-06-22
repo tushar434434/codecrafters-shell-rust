@@ -470,7 +470,10 @@ fn main() {
                 println!("{} is a shell builtin", arg);
             } else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
-            } else {
+            } else if cmd_name=="jobs"{
+                
+            }
+            else {
                 println!("{}: not found", arg);
             }
         } else if cmd_name == "complete" {
