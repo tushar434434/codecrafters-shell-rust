@@ -241,7 +241,7 @@ fn complete(
 
         return Ok((pos, Vec::new()));
     }
-    
+
     // Start with builtins
     let mut commands = vec![
         "echo".to_string(),
@@ -327,7 +327,6 @@ fn complete(
     }
 
     Ok((0, Vec::new()))
-}
 }
 fn main() {
     /*
