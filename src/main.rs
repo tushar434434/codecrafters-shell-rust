@@ -348,8 +348,10 @@ impl Completer for ShellHelper {
 fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
+    
     let mut bg_jobs: Vec<(u32, u32, String)> = Vec::new();
     let mut job_counter = 0;
+
     r1.set_helper(Some(ShellHelper {
         last_prefix: RefCell::new(String::new()),
         tab_count: Cell::new(0),
@@ -364,6 +366,7 @@ fn main() {
         if command.is_empty() {
             continue;
         }
+
         bg_jobs.retain(|&(_, pid, _)| {
             match Command::new("ps").arg("-p").arg(pid.to_string()).output() {
                 Ok(out) => out.status.success(),
@@ -404,17 +407,21 @@ fn main() {
         if !current.is_empty() {
             parts.push(current);
         }
+        
         if parts.is_empty() {
             continue;
         }
+
         let mut is_background = false;
         if parts.last().map(|s| s.as_str()) == Some("&") {
             is_background = true;
             parts.pop();
         }
+
         if parts.is_empty() {
             continue;
         }
+
         let cmd_name = parts[0].trim().to_string();
         let mut stdout_file = None;
         let mut stderr_file = None;
@@ -445,6 +452,7 @@ fn main() {
             args.push(parts[i].clone());
             i += 1;
         }
+
         if cmd_name == "exit" {
             break;
         } else if cmd_name == "echo" {
@@ -530,8 +538,8 @@ fn main() {
                 println!("cd: {}: No such file or directory", dir);
             }
         } else if cmd_name == "jobs" {
-            for (j_id, pid, full_cmd) in &bg_jobs {
-                println!("[{}] {} Running {}", j_id, pid, full_cmd);
+            for (j_id, _pid, full_cmd) in &bg_jobs {
+                println!("[{}]+  Running                 {} &", j_id, full_cmd);
             }
         } else {
             if let Some(_path) = find_executable(&cmd_name) {
