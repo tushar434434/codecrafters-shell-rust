@@ -3,9 +3,8 @@ use std::io::{self, Write};
 use std::env;
 use std::path::PathBuf;
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command; 
+use std::process::{Command, Child, Stdio}; 
 use std::fs::File;
-use std::process::Stdio;
 use std::fs::OpenOptions;
 use rustyline::{
     completion::{Completer, Pair},
@@ -18,7 +17,6 @@ use rustyline::{
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::process::Child;
 
 fn find_executable(cmd: &str) -> Option<PathBuf> {
     if let Ok(path_env) = env::var("PATH") {
@@ -346,58 +344,21 @@ impl Completer for ShellHelper {
     }
 }
 
-fn reap_background_jobs(bg_jobs: &mut Vec<(u32, Child, String)>, quiet: bool) {
-    let mut updated_jobs = Vec::new();
-    let total_jobs = bg_jobs.len();
-
-    for (idx, (id, mut child, cmd)) in bg_jobs.drain(..).enumerate() {
-        let marker = if idx == total_jobs - 1 {
-            "+"
-        } else if total_jobs >= 2 && idx == total_jobs - 2 {
-            "-"
-        } else {
-            " "
-        };
-
-        match child.try_wait() {
-            Ok(Some(_status)) => {
-                if !quiet {
-                    println!("[{}]{}  Done                    {}", id, marker, cmd);
-                }
-            }
-            _ => {
-                updated_jobs.push((id, child, cmd));
-            }
-        }
-    }
-
-    updated_jobs.sort_by_key(|(id, _, _)| *id);
-    *bg_jobs = updated_jobs;
-}
-
-fn display_jobs_builtin(bg_jobs: &mut Vec<(u32, Child, String)>) {
-    // 1. Process dead jobs silently during explicit command request
-    reap_background_jobs(bg_jobs, true);
-    
-    // 2. Format markers relative to remaining active layout structure
-    let total_jobs = bg_jobs.len();
-    for (idx, (id, _, cmd)) in bg_jobs.iter().enumerate() {
-        let marker = if idx == total_jobs - 1 {
-            "+"
-        } else if total_jobs >= 2 && idx == total_jobs - 2 {
-            "-"
-        } else {
-            " "
-        };
-        println!("[{}]{}  Running                 {} &", id, marker, cmd);
-    }
+struct BgJob {
+    job_id: u32,
+    child: Child,
+    command_str: String,
 }
 
 fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
     
-    let mut bg_jobs: Vec<(u32, Child, String)> = Vec::new();
+    let mut bg_jobs: Vec<BgJob> = Vec::new();
+    let mut job_counter = 0;
+    
+    let mut current_job_id: Option<u32> = None;
+    let mut previous_job_id: Option<u32> = None;
 
     r1.set_helper(Some(ShellHelper {
         last_prefix: RefCell::new(String::new()),
@@ -406,8 +367,36 @@ fn main() {
     }));
 
     loop {
-        // Quiet = false here, so normal execution loops print reaped jobs right before prompt
-        reap_background_jobs(&mut bg_jobs, false);
+        let mut i = 0;
+        while i < bg_jobs.len() {
+            match bg_jobs[i].child.try_wait() {
+                Ok(Some(_status)) => {
+                    let removed_id = bg_jobs[i].job_id;
+                    bg_jobs.remove(i);
+                    
+                    if current_job_id == Some(removed_id) {
+                        current_job_id = None;
+                    }
+                    if previous_job_id == Some(removed_id) {
+                        previous_job_id = None;
+                    }
+                }
+                Ok(None) => {
+                    i += 1;
+                }
+                Err(_) => {
+                    let removed_id = bg_jobs[i].job_id;
+                    bg_jobs.remove(i);
+                    
+                    if current_job_id == Some(removed_id) {
+                        current_job_id = None;
+                    }
+                    if previous_job_id == Some(removed_id) {
+                        previous_job_id = None;
+                    }
+                }
+            }
+        }
 
         let command = match r1.readline("$ ") {
             Ok(line) => line.trim().to_string(),
@@ -471,29 +460,29 @@ fn main() {
         let mut append_stdout = false;
         let mut append_stderr = false;
         let mut args = Vec::new();
-        let mut i = 1;
-        while i < parts.len() {
-            if parts[i] == ">" || parts[i] == "1>" {
-                stdout_file = Some(parts[i + 1].clone());
-                i += 2;
+        let mut idx = 1;
+        while idx < parts.len() {
+            if parts[idx] == ">" || parts[idx] == "1>" {
+                stdout_file = Some(parts[idx + 1].clone());
+                idx += 2;
                 continue;
-            } else if parts[i] == ">>" || parts[i] == "1>>" {
-                stdout_file = Some(parts[i + 1].clone());
+            } else if parts[idx] == ">>" || parts[idx] == "1>>" {
+                stdout_file = Some(parts[idx + 1].clone());
                 append_stdout = true;
-                i += 2;
+                idx += 2;
                 continue;
-            } else if parts[i] == "2>" {
-                stderr_file = Some(parts[i + 1].clone());
-                i += 2;
+            } else if parts[idx] == "2>" {
+                stderr_file = Some(parts[idx + 1].clone());
+                idx += 2;
                 continue;
-            } else if parts[i] == "2>>" {
-                stderr_file = Some(parts[i + 1].clone());
+            } else if parts[idx] == "2>>" {
+                stderr_file = Some(parts[idx + 1].clone());
                 append_stderr = true;
-                i += 2;
+                idx += 2;
                 continue;
             }
-            args.push(parts[i].clone());
-            i += 1;
+            args.push(parts[idx].clone());
+            idx += 1;
         }
 
         if cmd_name == "exit" {
@@ -581,7 +570,16 @@ fn main() {
                 println!("cd: {}: No such file or directory", dir);
             }
         } else if cmd_name == "jobs" {
-            display_jobs_builtin(&mut bg_jobs);
+            for job in &bg_jobs {
+                let marker = if current_job_id == Some(job.job_id) {
+                    "+"
+                } else if previous_job_id == Some(job.job_id) {
+                    "-"
+                } else {
+                    " "
+                };
+                println!("[{}]{}  Running                 {} &", job.job_id, marker, job.command_str);
+            }
         } else {
             if let Some(_path) = find_executable(&cmd_name) {
                 let args_ref: Vec<&str> = args
@@ -623,14 +621,8 @@ fn main() {
                     .unwrap();
 
                 if is_background {
-                    let assigned_id = if bg_jobs.is_empty() {
-                        1
-                    } else {
-                        bg_jobs.iter().map(|(id, _, _)| *id).max().unwrap() + 1
-                    };
-
-                    let pid = child.id();
-                    println!("[{}] {}", assigned_id, pid);
+                    job_counter += 1;
+                    println!("[{}] {}", job_counter, child.id());
                     
                     let trailing_args = args.join(" ");
                     let full_cmd_str = if trailing_args.is_empty() {
@@ -638,7 +630,14 @@ fn main() {
                     } else {
                         format!("{} {}", cmd_name, trailing_args)
                     };
-                    bg_jobs.push((assigned_id, child, full_cmd_str.trim().to_string()));
+                    bg_jobs.push(BgJob {
+                        job_id: job_counter,
+                        child,
+                        command_str: full_cmd_str.trim().to_string(),
+                    });
+                    
+                    previous_job_id = current_job_id;
+                    current_job_id = Some(job_counter);
                 } else {
                     child.wait().unwrap();
                 }
