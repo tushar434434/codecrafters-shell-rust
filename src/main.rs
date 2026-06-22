@@ -248,7 +248,7 @@ impl Completer for ShellHelper {
                     print!("\x07");
                     io::stdout().flush().unwrap();
                     return Ok((pos, Vec::new()));
-                } else if self.tab_count.get() == 2 {
+                } else if self.tab_count.get() >= 2 {
                     println!();
                     let display_names: Vec<String> = files.iter().map(|(name, is_dir)| {
                         if *is_dir {
@@ -333,7 +333,7 @@ impl Completer for ShellHelper {
             print!("\x07");
             io::stdout().flush().unwrap();
             return Ok((0, Vec::new()));
-        } else if self.tab_count.get() == 2 {
+        } else if self.tab_count.get() >= 2 {
             println!();
             println!("{}", matching_names.join("  "));
             print!("$ {}", prefix);
@@ -347,7 +347,7 @@ impl Completer for ShellHelper {
 
 fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
-    let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap(); 
+    let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
     let mut bg_jobs: Vec<(u32, u32, String)> = Vec::new();
     let mut job_counter = 0;
     r1.set_helper(Some(ShellHelper {
@@ -415,7 +415,7 @@ fn main() {
         if parts.is_empty() {
             continue;
         }
-        let cmd_name = &parts[0];
+        let cmd_name = parts[0].trim().to_string();
         let mut stdout_file = None;
         let mut stderr_file = None;
         let mut append_stdout = false;
@@ -534,12 +534,12 @@ fn main() {
                 println!("[{}] {} Running {}", j_id, pid, full_cmd);
             }
         } else {
-            if let Some(_path) = find_executable(cmd_name) {
+            if let Some(_path) = find_executable(&cmd_name) {
                 let args_ref: Vec<&str> = args
                     .iter()
                     .map(|s| s.as_str())
                     .collect();
-                let mut cmd = Command::new(cmd_name);
+                let mut cmd = Command::new(&cmd_name);
                 cmd.args(args_ref);
                 if let Some(file_name) = &stdout_file {
                     if append_stdout {
@@ -576,14 +576,19 @@ fn main() {
                 if is_background {
                     job_counter += 1;
                     let pid = child.id();
-                    println!("[{}] {}", job_counter, pid); 
-                    let full_cmd_str = format!("{} {}", cmd_name, args.join(" "));
+                    println!("[{}] {}", job_counter, pid);
+                    let trailing_args = args.join(" ");
+                    let full_cmd_str = if trailing_args.is_empty() {
+                        cmd_name
+                    } else {
+                        format!("{} {}", cmd_name, trailing_args)
+                    };
                     bg_jobs.push((job_counter, pid, full_cmd_str.trim().to_string()));
                 } else {
                     child.wait().unwrap();
                 }
             } else {
-                println!("{}: command not found", command);
+                println!("{}: command not found", cmd_name);
             }
         }
     }
