@@ -385,9 +385,9 @@ fn main() {
                     
                     bg_jobs.remove(i);
                     if current_job_id == Some(removed_id) {
-                        current_job_id = None;
-                    }
-                    if previous_job_id == Some(removed_id) {
+                        current_job_id = previous_job_id;
+                        previous_job_id = None;
+                    } else if previous_job_id == Some(removed_id) {
                         previous_job_id = None;
                     }
                 }
@@ -399,9 +399,9 @@ fn main() {
                     bg_jobs.remove(i);
                     
                     if current_job_id == Some(removed_id) {
-                        current_job_id = None;
-                    }
-                    if previous_job_id == Some(removed_id) {
+                        current_job_id = previous_job_id;
+                        previous_job_id = None;
+                    } else if previous_job_id == Some(removed_id) {
                         previous_job_id = None;
                     }
                 }
