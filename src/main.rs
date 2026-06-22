@@ -50,6 +50,7 @@ struct ShellHelper{ //because self is immutable
 struct ShellHelper {
     last_prefix: RefCell<String>,
     tab_count: Cell<usize>,
+    completions: Arc<Mutex<HashMap<String, String>>>, 
 }
 
 impl Default for ShellHelper {
@@ -104,6 +105,21 @@ fn complete(
     _: &Context<'_>,
 ) -> rustyline::Result<(usize, Vec<Pair>)> {
     let prefix = &line[..pos];
+    let cmd_name = line.split_whitespace().next().unwrap_or("");
+
+    // --- START: Added script execution logic ---
+    if let Ok(comps) = self.completions.lock() {
+        if let Some(path) = comps.get(cmd_name) {
+            if let Ok(output) = Command::new(path).output() {
+                let candidate = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !candidate.is_empty() {
+                    return Ok((pos, vec![Pair {
+                        display: candidate.clone(),
+                        replacement: format!("{} ", candidate),
+                    }]));
+                }
+            }
+        }
 
     // Check if we are completing an argument or a command name
     if let Some(last_space_idx) = prefix.rfind(' ') {
@@ -225,7 +241,7 @@ fn complete(
 
         return Ok((pos, Vec::new()));
     }
-
+    
     // Start with builtins
     let mut commands = vec![
         "echo".to_string(),
@@ -513,14 +529,15 @@ fn main() {
             }
         }
         else if cmd_name == "complete" {
-            if args.len() >= 3 && args[0] == "-C" {
-                let path =args[1].clone();
+            //ek hasmap bnaya taki key value pair bna lu
+            if args.len() >= 3 && args[0] == "-C" {//check kra ki argumnet ki len aur -c hai kya
+                let path =args[1].clone();//clone kr liya path ko aur aage cmnd ko
                 let cmd=args[2].clone();
-                completions.insert(cmd,path);
+                completions.insert(cmd,path); //hashmap mein ghusa diya 
             }
-           else if args.len() >= 2 && args[0] == "-p" {
+           else if args.len() >= 2 && args[0] == "-p" {//ab simply cmnd ko chla diya 
            let cmd = &args[1];
-           if let Some(path)=completions.get(cmd){
+           if let Some(path)=completions.get(cmd){//agr path ke sath koi cmnd hai use lao aur print kro
             println!("complete -C '{}' {}",path ,cmd);
            }
            else{
