@@ -344,17 +344,58 @@ impl Completer for ShellHelper {
     }
 }
 
-#[derive(PartialEq, Clone)]
-enum JobStatus {
-    Running,
-    Done,
-}
-
 struct BgJob {
     job_id: u32,
     child: Child,
     command_str: String,
-    status: JobStatus,
+}
+
+fn reap_jobs(
+    bg_jobs: &mut Vec<BgJob>,
+    current_job_id: &mut Option<u32>,
+    previous_job_id: &mut Option<u32>,
+) {
+    let mut i = 0;
+    while i < bg_jobs.len() {
+        match bg_jobs[i].child.try_wait() {
+            Ok(Some(_status)) => {
+                let removed_id = bg_jobs[i].job_id;
+                let cmd_str = bg_jobs[i].command_str.clone();
+                
+                let marker = if *current_job_id == Some(removed_id) {
+                    "+"
+                } else if *previous_job_id == Some(removed_id) {
+                    "-"
+                } else {
+                    " "
+                };
+                
+                println!("[{}]{}  Done                {} ", removed_id, marker, cmd_str);
+                
+                bg_jobs.remove(i);
+                if *current_job_id == Some(removed_id) {
+                    *current_job_id = *previous_job_id;
+                    *previous_job_id = None;
+                } else if *previous_job_id == Some(removed_id) {
+                    *previous_job_id = None;
+                }
+            }
+            Ok(None) => {
+                i += 1;
+            }
+            Err(_) => {
+                let removed_id = bg_jobs[i].job_id;
+                bg_jobs.remove(i);
+                
+                if *current_job_id == Some(removed_id) {
+                    *current_job_id = *previous_job_id;
+                    *previous_job_id = None;
+                } else if *previous_job_id == Some(removed_id) {
+                    *previous_job_id = None;
+                }
+            }
+        }
+    }
 }
 
 fn main() {
@@ -373,52 +414,12 @@ fn main() {
     }));
 
     loop {
-        // 1. Poll background jobs to check if they have transitioned to Done
-        for job in &mut bg_jobs {
-            if job.status == JobStatus::Running {
-                match job.child.try_wait() {
-                    Ok(Some(_status)) => {
-                        job.status = JobStatus::Done;
-                    }
-                    Err(_) => {
-                        job.status = JobStatus::Done;
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        // 2. Report completed jobs BEFORE displaying the next prompt
-        let mut i = 0;
-        while i < bg_jobs.len() {
-            if bg_jobs[i].status == JobStatus::Done {
-                let removed_id = bg_jobs[i].job_id;
-                let marker = if current_job_id == Some(removed_id) {
-                    "+"
-                } else if previous_job_id == Some(removed_id) {
-                    "-"
-                } else {
-                    " "
-                };
-                println!("[{}]{}  Done                {} ", removed_id, marker, bg_jobs[i].command_str);
-                
-                bg_jobs.remove(i);
-                if current_job_id == Some(removed_id) {
-                    current_job_id = previous_job_id;
-                    previous_job_id = None;
-                } else if previous_job_id == Some(removed_id) {
-                    previous_job_id = None;
-                }
-            } else {
-                i += 1;
-            }
-        }
+        reap_jobs(&mut bg_jobs, &mut current_job_id, &mut previous_job_id);
 
         let command = match r1.readline("$ ") {
             Ok(line) => line.trim().to_string(),
             Err(_) => break,
         };
-
         if command.is_empty() {
             continue;
         }
@@ -587,6 +588,7 @@ fn main() {
                 println!("cd: {}: No such file or directory", dir);
             }
         } else if cmd_name == "jobs" {
+            reap_jobs(&mut bg_jobs, &mut current_job_id, &mut previous_job_id);
             for job in &bg_jobs {
                 let marker = if current_job_id == Some(job.job_id) {
                     "+"
@@ -595,27 +597,7 @@ fn main() {
                 } else {
                     " "
                 };
-                if job.status == JobStatus::Running {
-                    println!("[{}]{}  Running                {} &", job.job_id, marker, job.command_str);
-                } else {
-                    println!("[{}]{}  Done                {}", job.job_id, marker, job.command_str);
-                }
-            }
-            // Clear out any reported Done jobs so they don't show up in subsequent prompts
-            let mut i = 0;
-            while i < bg_jobs.len() {
-                if bg_jobs[i].status == JobStatus::Done {
-                    let removed_id = bg_jobs[i].job_id;
-                    bg_jobs.remove(i);
-                    if current_job_id == Some(removed_id) {
-                        current_job_id = previous_job_id;
-                        previous_job_id = None;
-                    } else if previous_job_id == Some(removed_id) {
-                        previous_job_id = None;
-                    }
-                } else {
-                    i += 1;
-                }
+                println!("[{}]{}  Running                {} &", job.job_id, marker, job.command_str);
             }
         } else {
             if let Some(_path) = find_executable(&cmd_name) {
@@ -676,7 +658,6 @@ fn main() {
                         job_id: next_job_id,
                         child,
                         command_str: full_cmd_str.trim().to_string(),
-                        status: JobStatus::Running,
                     });
                     
                     previous_job_id = current_job_id;
