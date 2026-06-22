@@ -471,7 +471,7 @@ fn main() {
             } else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
             } else if cmd_name=="jobs"{
-                
+                println!("{}: command not found",cmd_name);
             }
             else {
                 println!("{}: not found", arg);
