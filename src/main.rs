@@ -18,6 +18,7 @@ use rustyline::{
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::process::Child;
 
 fn find_executable(cmd: &str) -> Option<PathBuf> {
     if let Ok(path_env) = env::var("PATH") {
@@ -349,8 +350,8 @@ fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
     
-    // Store background processes as: (job_id, pid, command_string)
-    let mut bg_jobs: Vec<(u32, u32, String)> = Vec::new();
+    // Store background processes along with their active Child handles: (job_id, child_handle, command_string)
+    let mut bg_jobs: Vec<(u32, Child, String)> = Vec::new();
     let mut job_counter = 0;
 
     r1.set_helper(Some(ShellHelper {
@@ -367,14 +368,6 @@ fn main() {
         if command.is_empty() {
             continue;
         }
-
-        // Clean completed processes out of our vector array dynamically
-        bg_jobs.retain(|&(_, pid, _)| {
-            match Command::new("ps").arg("-p").arg(pid.to_string()).output() {
-                Ok(out) => out.status.success(),
-                Err(_) => false,
-            }
-        });
 
         let mut parts: Vec<String> = Vec::new();
         let mut current = String::new();
@@ -541,8 +534,8 @@ fn main() {
             }
         } else if cmd_name == "jobs" {
             let total_jobs = bg_jobs.len();
-            for (idx, (j_id, _pid, full_cmd)) in bg_jobs.iter().enumerate() {
-                // Determine Bash-specific marker character based on active tracking list index recency
+            let mut active_jobs = Vec::new();
+            for (idx, (j_id, child, full_cmd)) in bg_jobs.iter_mut().enumerate() {
                 let marker = if idx == total_jobs - 1 {
                     "+"
                 } else if total_jobs >= 2 && idx == total_jobs - 2 {
@@ -550,8 +543,22 @@ fn main() {
                 } else {
                     " "
                 };
-                println!("[{}]{}  Running                 {} &", j_id, marker, full_cmd);
+                match child.try_wait() {
+                    Ok(Some(_status)) => {
+                        println!("[{}]{}  Done                    {}", j_id, marker, full_cmd);
+                    }
+                    _ => {
+                        println!("[{}]{}  Running                 {} &", j_id, marker, full_cmd);
+                        active_jobs.push((*j_id, child, full_cmd.clone()));
+                    }
+                }
             }
+            bg_jobs = active_jobs.into_iter().map(|(id, child, cmd)| {
+                unsafe {
+                    let child_raw = std::ptr::read(child);
+                    (id, child_raw, cmd)
+                }
+            }).collect();
         } else {
             if let Some(_path) = find_executable(&cmd_name) {
                 let args_ref: Vec<&str> = args
@@ -603,7 +610,7 @@ fn main() {
                     } else {
                         format!("{} {}", cmd_name, trailing_args)
                     };
-                    bg_jobs.push((job_counter, pid, full_cmd_str.trim().to_string()));
+                    bg_jobs.push((job_counter, child, full_cmd_str.trim().to_string()));
                 } else {
                     child.wait().unwrap();
                 }
