@@ -17,7 +17,7 @@ use rustyline::{
 };
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex}; // Added missing imports
+use std::sync::{Arc, Mutex};
 
 fn find_executable(cmd: &str) -> Option<PathBuf> {
     if let Ok(path_env) = env::var("PATH") {
@@ -64,10 +64,28 @@ impl Completer for ShellHelper {
         let cmd_name = line.split_whitespace().next().unwrap_or("");
         if let Ok(comps) = self.completions.lock() {
             if let Some(path) = comps.get(cmd_name) {
-                if let Ok(output) = Command::new(path).output() {
+                let words: Vec<&str> = prefix.split_whitespace().collect();
+                let arg1 = cmd_name;
+                let arg2 = if prefix.ends_with(' ') {
+                    ""
+                } else {
+                    words.last().cloned().unwrap_or("")
+                };
+                let arg3 = if prefix.ends_with(' ') {
+                    words.last().cloned().unwrap_or("")
+                } else if words.len() >= 2 {
+                    words[words.len() - 2]
+                } else {
+                    ""
+                };
+                if let Ok(output) = Command::new(path)
+                    .args(&[arg1, arg2, arg3])
+                    .output() 
+                {
                     let candidate = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     if !candidate.is_empty() {
-                        return Ok((pos, vec![Pair {
+                        let replace_pos = pos - arg2.len();
+                        return Ok((replace_pos, vec![Pair {
                             display: candidate.clone(),
                             replacement: format!("{} ", candidate),
                         }]));
@@ -252,7 +270,7 @@ impl Completer for ShellHelper {
         } else {
             self.tab_count.set(1);
             *last_p = prefix.to_string();
-        }
+                }
         if self.tab_count.get() == 1 {
             print!("\x07");
             io::stdout().flush().unwrap();
