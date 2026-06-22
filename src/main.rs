@@ -370,7 +370,7 @@ fn reap_background_jobs(bg_jobs: &mut Vec<(u32, Child, String)>) {
         } else {
             " "
         };
-        println!("[{}]{}  Done                  {}", id, marker, cmd);
+        println!("[{}]{}  Done                 {}", id, marker, cmd);
     }
 
     *bg_jobs = updated_jobs;
