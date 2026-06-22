@@ -322,7 +322,7 @@ fn main() {
         let mut command = String::new();
         io::stdin().read_line(&mut command).unwrap();
         command = command.trim().to_string();
-*/
+*/       let mut completions: HashMap<String, String> = HashMap::new();
         let mut r1 = Editor::<ShellHelper,DefaultHistory>::new().unwrap();
         r1.set_helper(Some(ShellHelper::default()));
         loop{
@@ -513,8 +513,6 @@ fn main() {
             }
         }
         else if cmd_name == "complete" {
-            let mut completions: HashMap<String, String> = HashMap::new();
-            if args.len()>=3 && args[0]=="-C"{
                 let path =args[1].clone();
                 let cmd=args[2].clone();
                 completions.insert(cmd,path);
