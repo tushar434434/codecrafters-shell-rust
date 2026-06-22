@@ -1,6 +1,5 @@
 //dont change my 
 #![allow(unused_imports)]
-#[cfg(unix)]
 use std::io::{self, Write};
 use std::env;
 use std::path::PathBuf;
@@ -30,14 +29,12 @@ fn find_executable(cmd: &str) -> Option<PathBuf> {
         for path in env::split_paths(&path_env) {
             let exe_path = path.join(cmd);
             if exe_path.exists() {
-                #[cfg(unix)]
                 if let Ok(metadata) = exe_path.metadata() {
                     if metadata.permissions().mode() & 0o111 != 0 {
                         return Some(exe_path);
                     }
                 }
             }
-            #[cfg(unix)]
         }
     }
     None
@@ -519,6 +516,7 @@ fn main() {
         let cmd = &args[1];
         println!("complete: {}: no completion specification", cmd);
          } else {
+        
         if !args.is_empty() && args[0] != "-p" {
             eprintln!("complete: flags other than -p are not yet supported");
             }
