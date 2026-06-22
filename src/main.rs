@@ -65,12 +65,15 @@ impl Completer for ShellHelper {
         if let Ok(comps) = self.completions.lock() {
             if let Some(path) = comps.get(cmd_name) {
                 let words: Vec<&str> = prefix.split_whitespace().collect();
+                
                 let arg1 = cmd_name;
+                
                 let arg2 = if prefix.ends_with(' ') {
                     ""
                 } else {
                     words.last().cloned().unwrap_or("")
                 };
+                
                 let arg3 = if prefix.ends_with(' ') {
                     words.last().cloned().unwrap_or("")
                 } else if words.len() >= 2 {
@@ -78,19 +81,51 @@ impl Completer for ShellHelper {
                 } else {
                     ""
                 };
+
                 if let Ok(output) = Command::new(path)
                     .args(&[arg1, arg2, arg3])
                     .env("COMP_LINE", line)
                     .env("COMP_POINT", pos.to_string())
                     .output() 
                 {
-                    let candidate = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if !candidate.is_empty() {
+                    let raw_stdout = String::from_utf8_lossy(&output.stdout);
+                    // Parse each non-empty line as a distinct candidate
+                    let mut candidates: Vec<String> = raw_stdout
+                        .lines()
+                        .map(|l| l.trim().to_string())
+                        .filter(|l| !l.is_empty())
+                        .collect();
+
+                    if candidates.len() == 1 {
+                        let candidate = &candidates[0];
                         let replace_pos = pos - arg2.len();
                         return Ok((replace_pos, vec![Pair {
                             display: candidate.clone(),
                             replacement: format!("{} ", candidate),
                         }]));
+                    } else if candidates.len() > 1 {
+                        // Track state for multiple candidates from custom completer scripts
+                        let mut last_p = self.last_prefix.borrow_mut();
+                        if *last_p == prefix {
+                            self.tab_count.set(self.tab_count.get() + 1);
+                        } else {
+                            self.tab_count.set(1);
+                            *last_p = prefix.to_string();
+                        }
+
+                        if self.tab_count.get() == 1 {
+                            print!("\x07"); // Ring terminal bell
+                            io::stdout().flush().unwrap();
+                            return Ok((pos, Vec::new()));
+                        } else if self.tab_count.get() >= 2 {
+                            println!();
+                            candidates.sort();
+                            println!("{}", candidates.join("  "));
+                            print!("$ {}", prefix);
+                            io::stdout().flush().unwrap();
+                            self.tab_count.set(0);
+                            return Ok((pos, Vec::new()));
+                        }
                     }
                 }
             }
