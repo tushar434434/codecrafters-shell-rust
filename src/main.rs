@@ -373,7 +373,7 @@ fn main() {
     }));
 
     loop {
-        // Poll background jobs to check if they have transitioned to Done
+        // 1. Poll background jobs to check if they have transitioned to Done
         for job in &mut bg_jobs {
             if job.status == JobStatus::Running {
                 match job.child.try_wait() {
@@ -388,39 +388,36 @@ fn main() {
             }
         }
 
+        // 2. Report completed jobs BEFORE displaying the next prompt
+        let mut i = 0;
+        while i < bg_jobs.len() {
+            if bg_jobs[i].status == JobStatus::Done {
+                let removed_id = bg_jobs[i].job_id;
+                let marker = if current_job_id == Some(removed_id) {
+                    "+"
+                } else if previous_job_id == Some(removed_id) {
+                    "-"
+                } else {
+                    " "
+                };
+                println!("[{}]{}  Done                {} ", removed_id, marker, bg_jobs[i].command_str);
+                
+                bg_jobs.remove(i);
+                if current_job_id == Some(removed_id) {
+                    current_job_id = previous_job_id;
+                    previous_job_id = None;
+                } else if previous_job_id == Some(removed_id) {
+                    previous_job_id = None;
+                }
+            } else {
+                i += 1;
+            }
+        }
+
         let command = match r1.readline("$ ") {
             Ok(line) => line.trim().to_string(),
             Err(_) => break,
         };
-
-        // Before executing commands, report any freshly finished jobs that aren't evaluated inside builtins
-        let cmd_first_word = command.split_whitespace().next().unwrap_or("");
-        if cmd_first_word != "jobs" {
-            let mut i = 0;
-            while i < bg_jobs.len() {
-                if bg_jobs[i].status == JobStatus::Done {
-                    let removed_id = bg_jobs[i].job_id;
-                    let marker = if current_job_id == Some(removed_id) {
-                        "+"
-                    } else if previous_job_id == Some(removed_id) {
-                        "-"
-                    } else {
-                        " "
-                    };
-                    println!("[{}]{}  Done                {} ", removed_id, marker, bg_jobs[i].command_str);
-                    
-                    bg_jobs.remove(i);
-                    if current_job_id == Some(removed_id) {
-                        current_job_id = previous_job_id;
-                        previous_job_id = None;
-                    } else if previous_job_id == Some(removed_id) {
-                        previous_job_id = None;
-                    }
-                } else {
-                    i += 1;
-                }
-            }
-        }
 
         if command.is_empty() {
             continue;
@@ -590,7 +587,6 @@ fn main() {
                 println!("cd: {}: No such file or directory", dir);
             }
         } else if cmd_name == "jobs" {
-            // Print status of all jobs tracked in this lifecycle block
             for job in &bg_jobs {
                 let marker = if current_job_id == Some(job.job_id) {
                     "+"
