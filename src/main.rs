@@ -109,7 +109,7 @@ impl Completer for ShellHelper {
                             for (c1, c2) in lcp.chars().zip(name.chars()) {
                                 if c1 == c2 {
                                     common_len += c1.len_utf8();
-                               } else {
+                                } else {
                                     break;
                                 }
                             }
@@ -468,6 +468,11 @@ fn main() {
                 let cmd = args[2].clone();
                 if let Ok(mut comps) = completions.lock() {
                     comps.insert(cmd, path);
+                }
+            } else if args.len() >= 2 && args[0] == "-r" {
+                let cmd = &args[1];
+                if let Ok(mut comps) = completions.lock() {
+                    comps.remove(cmd);
                 }
             } else if args.len() >= 2 && args[0] == "-p" {
                 let cmd = &args[1];
