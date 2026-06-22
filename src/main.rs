@@ -89,7 +89,6 @@ impl Completer for ShellHelper {
                     .output() 
                 {
                     let raw_stdout = String::from_utf8_lossy(&output.stdout);
-                    // Parse each non-empty line as a distinct candidate
                     let mut candidates: Vec<String> = raw_stdout
                         .lines()
                         .map(|l| l.trim().to_string())
@@ -104,7 +103,25 @@ impl Completer for ShellHelper {
                             replacement: format!("{} ", candidate),
                         }]));
                     } else if candidates.len() > 1 {
-                        // Track state for multiple candidates from custom completer scripts
+                        let mut lcp = candidates[0].clone();
+                        for name in candidates.iter().skip(1) {
+                            let mut common_len = 0;
+                            for (c1, c2) in lcp.chars().zip(name.chars()) {
+                                if c1 == c2 {
+                                    common_len += c1.len_utf8();
+                               } else {
+                                    break;
+                                }
+                            }
+                            lcp.truncate(common_len);
+                        }
+                        let replace_pos = pos - arg2.len();
+                        if lcp.len() > arg2.len() {
+                            return Ok((replace_pos, vec![Pair {
+                                display: lcp.clone(),
+                                replacement: lcp,
+                            }]));
+                        }
                         let mut last_p = self.last_prefix.borrow_mut();
                         if *last_p == prefix {
                             self.tab_count.set(self.tab_count.get() + 1);
@@ -112,9 +129,8 @@ impl Completer for ShellHelper {
                             self.tab_count.set(1);
                             *last_p = prefix.to_string();
                         }
-
                         if self.tab_count.get() == 1 {
-                            print!("\x07"); // Ring terminal bell
+                            print!("\x07"); 
                             io::stdout().flush().unwrap();
                             return Ok((pos, Vec::new()));
                         } else if self.tab_count.get() >= 2 {
