@@ -346,11 +346,48 @@ impl Completer for ShellHelper {
     }
 }
 
+// Dedicated logic to sweep completed child tasks and print state transitions
+fn reap_background_jobs(bg_jobs: &mut Vec<(u32, Child, String)>, show_running: bool) {
+    let total_jobs = bg_jobs.len();
+    let mut active_jobs = Vec::new();
+
+    for (idx, (j_id, child, full_cmd)) in bg_jobs.iter_mut().enumerate() {
+        let marker = if idx == total_jobs - 1 {
+            "+"
+        } else if total_jobs >= 2 && idx == total_jobs - 2 {
+            "-"
+        } else {
+            " "
+        };
+
+        match child.try_wait() {
+            Ok(Some(_status)) => {
+                // Job just exited normally -> print "Done" state once and do not preserve it
+                println!("[{}]{}  Done                    {}", j_id, marker, full_cmd);
+            }
+            _ => {
+                // Job is still currently executing -> preserve it in active jobs track
+                if show_running {
+                    println!("[{}]{}  Running                 {} &", j_id, marker, full_cmd);
+                }
+                active_jobs.push((*j_id, child, full_cmd.clone()));
+            }
+        }
+    }
+
+    // Safely collect only items that are still active
+    *bg_jobs = active_jobs.into_iter().map(|(id, child, cmd)| {
+        unsafe {
+            let child_raw = std::ptr::read(child);
+            (id, child_raw, cmd)
+        }
+    }).collect();
+}
+
 fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
     
-    // Store background processes along with their active Child handles: (job_id, child_handle, command_string)
     let mut bg_jobs: Vec<(u32, Child, String)> = Vec::new();
     let mut job_counter = 0;
 
@@ -361,6 +398,9 @@ fn main() {
     }));
 
     loop {
+        // 1. Automatic Reaping: Check for completed jobs immediately before showing the prompt line
+        reap_background_jobs(&mut bg_jobs, false);
+
         let command = match r1.readline("$ ") {
             Ok(line) => line.trim().to_string(),
             Err(_) => break,
@@ -533,32 +573,8 @@ fn main() {
                 println!("cd: {}: No such file or directory", dir);
             }
         } else if cmd_name == "jobs" {
-            let total_jobs = bg_jobs.len();
-            let mut active_jobs = Vec::new();
-            for (idx, (j_id, child, full_cmd)) in bg_jobs.iter_mut().enumerate() {
-                let marker = if idx == total_jobs - 1 {
-                    "+"
-                } else if total_jobs >= 2 && idx == total_jobs - 2 {
-                    "-"
-                } else {
-                    " "
-                };
-                match child.try_wait() {
-                    Ok(Some(_status)) => {
-                        println!("[{}]{}  Done                    {}", j_id, marker, full_cmd);
-                    }
-                    _ => {
-                        println!("[{}]{}  Running                 {} &", j_id, marker, full_cmd);
-                        active_jobs.push((*j_id, child, full_cmd.clone()));
-                    }
-                }
-            }
-            bg_jobs = active_jobs.into_iter().map(|(id, child, cmd)| {
-                unsafe {
-                    let child_raw = std::ptr::read(child);
-                    (id, child_raw, cmd)
-                }
-            }).collect();
+            // 2. Builtin Reaping: Check for completed transitions right now, printing active statuses too
+            reap_background_jobs(&mut bg_jobs, true);
         } else {
             if let Some(_path) = find_executable(&cmd_name) {
                 let args_ref: Vec<&str> = args
