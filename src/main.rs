@@ -513,6 +513,7 @@ fn main() {
             }
         }
         else if cmd_name == "complete" {
+            if args.len() >= 3 && args[0] == "-C" {
                 let path =args[1].clone();
                 let cmd=args[2].clone();
                 completions.insert(cmd,path);
