@@ -80,6 +80,8 @@ impl Completer for ShellHelper {
                 };
                 if let Ok(output) = Command::new(path)
                     .args(&[arg1, arg2, arg3])
+                    .env("COMP_LINE", line)
+                    .env("COMP_POINT", pos.to_string())
                     .output() 
                 {
                     let candidate = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -270,7 +272,7 @@ impl Completer for ShellHelper {
         } else {
             self.tab_count.set(1);
             *last_p = prefix.to_string();
-                }
+        }
         if self.tab_count.get() == 1 {
             print!("\x07");
             io::stdout().flush().unwrap();
