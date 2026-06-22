@@ -372,8 +372,20 @@ fn main() {
             match bg_jobs[i].child.try_wait() {
                 Ok(Some(_status)) => {
                     let removed_id = bg_jobs[i].job_id;
-                    bg_jobs.remove(i);
+                    let cmd_str = bg_jobs[i].command_str.clone();
                     
+                    let marker = if current_job_id == Some(removed_id) {
+                        "+"
+                    } else if previous_job_id == Some(removed_id) {
+                        "-"
+                    } else {
+                        " "
+                    };
+                    
+                    // Print termination line: [1]+ Done                 cat /tmp/mango-17 &
+                    println!("[{}]{} Done                 {} &", removed_id, marker, cmd_str);
+                    
+                    bg_jobs.remove(i);
                     if current_job_id == Some(removed_id) {
                         current_job_id = None;
                     }
