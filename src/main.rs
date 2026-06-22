@@ -115,13 +115,16 @@ impl Completer for ShellHelper {
                             }
                             lcp.truncate(common_len);
                         }
+
                         let replace_pos = pos - arg2.len();
+
                         if lcp.len() > arg2.len() {
                             return Ok((replace_pos, vec![Pair {
                                 display: lcp.clone(),
                                 replacement: lcp,
                             }]));
                         }
+
                         let mut last_p = self.last_prefix.borrow_mut();
                         if *last_p == prefix {
                             self.tab_count.set(self.tab_count.get() + 1);
@@ -129,6 +132,7 @@ impl Completer for ShellHelper {
                             self.tab_count.set(1);
                             *last_p = prefix.to_string();
                         }
+
                         if self.tab_count.get() == 1 {
                             print!("\x07"); 
                             io::stdout().flush().unwrap();
@@ -269,6 +273,7 @@ impl Completer for ShellHelper {
             "type".to_string(),
             "pwd".to_string(),
             "cd".to_string(),
+            "jobs".to_string(),
         ];
         if let Ok(path_env) = env::var("PATH") {
             for dir in env::split_paths(&path_env) {
@@ -342,8 +347,9 @@ impl Completer for ShellHelper {
 
 fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
-    let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
-    let mut job_counter = 0; 
+    let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap(); 
+    let mut bg_jobs: Vec<(u32, u32, String)> = Vec::new();
+    let mut job_counter = 0;
     r1.set_helper(Some(ShellHelper {
         last_prefix: RefCell::new(String::new()),
         tab_count: Cell::new(0),
@@ -358,6 +364,13 @@ fn main() {
         if command.is_empty() {
             continue;
         }
+        bg_jobs.retain(|&(_, pid, _)| {
+            match Command::new("ps").arg("-p").arg(pid.to_string()).output() {
+                Ok(out) => out.status.success(),
+                Err(_) => false,
+            }
+        });
+
         let mut parts: Vec<String> = Vec::new();
         let mut current = String::new();
         let mut in_quotes = false;
@@ -397,7 +410,7 @@ fn main() {
         let mut is_background = false;
         if parts.last().map(|s| s.as_str()) == Some("&") {
             is_background = true;
-            parts.pop(); 
+            parts.pop();
         }
         if parts.is_empty() {
             continue;
@@ -464,14 +477,17 @@ fn main() {
                 }
             }
         } else if cmd_name == "type" {
+            if args.is_empty() {
+                println!("type: missing arguments");
+                continue;
+            }
             let arg = &args[0];
 
-            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete"|| arg=="jobs" {
+            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete" || arg == "jobs" {
                 println!("{} is a shell builtin", arg);
             } else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
-            } 
-            else {
+            } else {
                 println!("{}: not found", arg);
             }
         } else if cmd_name == "complete" {
@@ -502,6 +518,9 @@ fn main() {
                 Err(_) => eprintln!("pwd: unable to get current directory"),
             }
         } else if cmd_name == "cd" {
+            if args.is_empty() {
+                continue;
+            }
             let dir = &args[0];
             if dir == "~" {
                 if let Ok(home) = env::var("HOME") {
@@ -509,6 +528,10 @@ fn main() {
                 }
             } else if let Err(_) = env::set_current_dir(dir) {
                 println!("cd: {}: No such file or directory", dir);
+            }
+        } else if cmd_name == "jobs" {
+            for (j_id, pid, full_cmd) in &bg_jobs {
+                println!("[{}] {} Running {}", j_id, pid, full_cmd);
             }
         } else {
             if let Some(_path) = find_executable(cmd_name) {
@@ -552,7 +575,10 @@ fn main() {
 
                 if is_background {
                     job_counter += 1;
-                    println!("[{}] {}", job_counter, child.id());
+                    let pid = child.id();
+                    println!("[{}] {}", job_counter, pid); 
+                    let full_cmd_str = format!("{} {}", cmd_name, args.join(" "));
+                    bg_jobs.push((job_counter, pid, full_cmd_str.trim().to_string()));
                 } else {
                     child.wait().unwrap();
                 }
