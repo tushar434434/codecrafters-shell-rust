@@ -346,11 +346,10 @@ impl Completer for ShellHelper {
     }
 }
 
-fn reap_background_jobs(bg_jobs: &mut Vec<(u32, Child, String)>) {
+fn reap_background_jobs(bg_jobs: &mut Vec<(u32, Child, String)>, quiet: bool) {
     let mut updated_jobs = Vec::new();
     let total_jobs = bg_jobs.len();
 
-    // Loop through with explicit indices to check static positioning first
     for (idx, (id, mut child, cmd)) in bg_jobs.drain(..).enumerate() {
         let marker = if idx == total_jobs - 1 {
             "+"
@@ -362,8 +361,9 @@ fn reap_background_jobs(bg_jobs: &mut Vec<(u32, Child, String)>) {
 
         match child.try_wait() {
             Ok(Some(_status)) => {
-                // Print immediately upon noticing it has finished, using the snapshot-accurate marker
-                println!("[{}]{}  Done                    {}", id, marker, cmd);
+                if !quiet {
+                    println!("[{}]{}  Done                    {}", id, marker, cmd);
+                }
             }
             _ => {
                 updated_jobs.push((id, child, cmd));
@@ -376,8 +376,10 @@ fn reap_background_jobs(bg_jobs: &mut Vec<(u32, Child, String)>) {
 }
 
 fn display_jobs_builtin(bg_jobs: &mut Vec<(u32, Child, String)>) {
-    reap_background_jobs(bg_jobs);
+    // 1. Process dead jobs silently during explicit command request
+    reap_background_jobs(bg_jobs, true);
     
+    // 2. Format markers relative to remaining active layout structure
     let total_jobs = bg_jobs.len();
     for (idx, (id, _, cmd)) in bg_jobs.iter().enumerate() {
         let marker = if idx == total_jobs - 1 {
@@ -404,7 +406,8 @@ fn main() {
     }));
 
     loop {
-        reap_background_jobs(&mut bg_jobs);
+        // Quiet = false here, so normal execution loops print reaped jobs right before prompt
+        reap_background_jobs(&mut bg_jobs, false);
 
         let command = match r1.readline("$ ") {
             Ok(line) => line.trim().to_string(),
