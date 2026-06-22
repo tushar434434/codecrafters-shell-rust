@@ -355,7 +355,6 @@ fn main() {
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
     
     let mut bg_jobs: Vec<BgJob> = Vec::new();
-    let mut job_counter = 0;
     
     let mut current_job_id: Option<u32> = None;
     let mut previous_job_id: Option<u32> = None;
@@ -382,8 +381,7 @@ fn main() {
                         " "
                     };
                     
-                    // Print termination line: [1]+ Done                 cat /tmp/mango-17 &
-                    println!("[{}]{}  Done                 {} ", removed_id, marker, cmd_str);
+                    println!("[{}]{}  Done                {} ", removed_id, marker, cmd_str);
                     
                     bg_jobs.remove(i);
                     if current_job_id == Some(removed_id) {
@@ -590,7 +588,7 @@ fn main() {
                 } else {
                     " "
                 };
-                println!("[{}]{}  Running                 {} &", job.job_id, marker, job.command_str);
+                println!("[{}]{}  Running                {} &", job.job_id, marker, job.command_str);
             }
         } else {
             if let Some(_path) = find_executable(&cmd_name) {
@@ -633,8 +631,13 @@ fn main() {
                     .unwrap();
 
                 if is_background {
-                    job_counter += 1;
-                    println!("[{}] {}", job_counter, child.id());
+                    let next_job_id = if bg_jobs.is_empty() {
+                        1
+                    } else {
+                        bg_jobs.iter().map(|j| j.job_id).max().unwrap_or(0) + 1
+                    };
+
+                    println!("[{}] {}", next_job_id, child.id());
                     
                     let trailing_args = args.join(" ");
                     let full_cmd_str = if trailing_args.is_empty() {
@@ -643,13 +646,13 @@ fn main() {
                         format!("{} {}", cmd_name, trailing_args)
                     };
                     bg_jobs.push(BgJob {
-                        job_id: job_counter,
+                        job_id: next_job_id,
                         child,
                         command_str: full_cmd_str.trim().to_string(),
                     });
                     
                     previous_job_id = current_job_id;
-                    current_job_id = Some(job_counter);
+                    current_job_id = Some(next_job_id);
                 } else {
                     child.wait().unwrap();
                 }
