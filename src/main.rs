@@ -343,7 +343,7 @@ impl Completer for ShellHelper {
 fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
-    
+    let mut job_counter = 0; 
     r1.set_helper(Some(ShellHelper {
         last_prefix: RefCell::new(String::new()),
         tab_count: Cell::new(0),
@@ -390,6 +390,17 @@ fn main() {
         }
         if !current.is_empty() {
             parts.push(current);
+        }
+        if parts.is_empty() {
+            continue;
+        }
+        let mut is_background = false;
+        if parts.last().map(|s| s.as_str()) == Some("&") {
+            is_background = true;
+            parts.pop(); 
+        }
+        if parts.is_empty() {
+            continue;
         }
         let cmd_name = &parts[0];
         let mut stdout_file = None;
@@ -455,7 +466,7 @@ fn main() {
         } else if cmd_name == "type" {
             let arg = &args[0];
 
-            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete" || arg=="jobs" {
+            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete" {
                 println!("{} is a shell builtin", arg);
             } else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
@@ -498,10 +509,7 @@ fn main() {
             } else if let Err(_) = env::set_current_dir(dir) {
                 println!("cd: {}: No such file or directory", dir);
             }
-        }else if cmd_name=="jobs"{
-            
-        }
-         else {
+        } else {
             if let Some(_path) = find_executable(cmd_name) {
                 let args_ref: Vec<&str> = args
                     .iter()
@@ -540,7 +548,13 @@ fn main() {
                 let mut child = cmd
                     .spawn()
                     .unwrap();
-                child.wait().unwrap();
+
+                if is_background {
+                    job_counter += 1;
+                    println!("[{}] {}", job_counter, child.id());
+                } else {
+                    child.wait().unwrap();
+                }
             } else {
                 println!("{}: command not found", command);
             }
