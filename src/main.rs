@@ -350,11 +350,17 @@ struct BgJob {
     command_str: String,
 }
 
-fn reap_jobs(
-    bg_jobs: &mut Vec<BgJob>,
-    current_job_id: &mut Option<u32>,
-    previous_job_id: &mut Option<u32>,
-) {
+// Derives current (+) and previous (-) job markers from the active background list.
+// The highest job_id is current (+), the second highest is previous (-).
+fn get_markers(bg_jobs: &[BgJob]) -> (Option<u32>, Option<u32>) {
+    let mut ids: Vec<u32> = bg_jobs.iter().map(|j| j.job_id).collect();
+    ids.sort_unstable();
+    let current = ids.pop();
+    let previous = ids.pop();
+    (current, previous)
+}
+
+fn reap_jobs(bg_jobs: &mut Vec<BgJob>) {
     let mut i = 0;
     while i < bg_jobs.len() {
         match bg_jobs[i].child.try_wait() {
@@ -362,37 +368,23 @@ fn reap_jobs(
                 let removed_id = bg_jobs[i].job_id;
                 let cmd_str = bg_jobs[i].command_str.clone();
                 
-                let marker = if *current_job_id == Some(removed_id) {
+                let (current_id, previous_id) = get_markers(bg_jobs);
+                let marker = if current_id == Some(removed_id) {
                     "+"
-                } else if *previous_job_id == Some(removed_id) {
+                } else if previous_id == Some(removed_id) {
                     "-"
                 } else {
                     " "
                 };
                 
                 println!("[{}]{}  Done                {} ", removed_id, marker, cmd_str);
-                
                 bg_jobs.remove(i);
-                if *current_job_id == Some(removed_id) {
-                    *current_job_id = *previous_job_id;
-                    *previous_job_id = None;
-                } else if *previous_job_id == Some(removed_id) {
-                    *previous_job_id = None;
-                }
             }
             Ok(None) => {
                 i += 1;
             }
             Err(_) => {
-                let removed_id = bg_jobs[i].job_id;
                 bg_jobs.remove(i);
-                
-                if *current_job_id == Some(removed_id) {
-                    *current_job_id = *previous_job_id;
-                    *previous_job_id = None;
-                } else if *previous_job_id == Some(removed_id) {
-                    *previous_job_id = None;
-                }
             }
         }
     }
@@ -403,9 +395,6 @@ fn main() {
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
     
     let mut bg_jobs: Vec<BgJob> = Vec::new();
-    
-    let mut current_job_id: Option<u32> = None;
-    let mut previous_job_id: Option<u32> = None;
 
     r1.set_helper(Some(ShellHelper {
         last_prefix: RefCell::new(String::new()),
@@ -414,7 +403,7 @@ fn main() {
     }));
 
     loop {
-        reap_jobs(&mut bg_jobs, &mut current_job_id, &mut previous_job_id);
+        reap_jobs(&mut bg_jobs);
 
         let command = match r1.readline("$ ") {
             Ok(line) => line.trim().to_string(),
@@ -589,11 +578,12 @@ fn main() {
             }
         } else if cmd_name == "jobs" {
             let mut finished = Vec::new();
+            let (current_id, previous_id) = get_markers(&bg_jobs);
 
             for job in &mut bg_jobs {
-                let marker = if current_job_id == Some(job.job_id) {
+                let marker = if current_id == Some(job.job_id) {
                     "+"
-                } else if previous_job_id == Some(job.job_id) {
+                } else if previous_id == Some(job.job_id) {
                     "-"
                 } else {
                     " "
@@ -613,16 +603,8 @@ fn main() {
                 }
             }
 
-            // Post-print cleanup preserves job table printing sequence
-            for removed_id in &finished {
-                bg_jobs.retain(|j| j.job_id != *removed_id);
-                if current_job_id == Some(*removed_id) {
-                    current_job_id = previous_job_id;
-                    previous_job_id = None;
-                } else if previous_job_id == Some(*removed_id) {
-                    previous_job_id = None;
-                }
-            }
+            // Evict finished jobs after the complete job table has been cleanly printed in order
+            bg_jobs.retain(|j| !finished.contains(&j.job_id));
         } else {
             if let Some(_path) = find_executable(&cmd_name) {
                 let args_ref: Vec<&str> = args
@@ -683,9 +665,6 @@ fn main() {
                         child,
                         command_str: full_cmd_str.trim().to_string(),
                     });
-                    
-                    previous_job_id = current_job_id;
-                    current_job_id = Some(next_job_id);
                 } else {
                     child.wait().unwrap();
                 }
