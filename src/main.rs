@@ -17,6 +17,7 @@ use rustyline::{
     Context, Editor, Helper,
 };
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 //Hinter:Provides gray suggestions while typing.
 //Completer:A trait (interface) that allows us to define our own tab-completion behavior.
 //Editor: Provides readline functionality.
@@ -512,16 +513,22 @@ fn main() {
             }
         }
         else if cmd_name == "complete" {
-         if args.len() >= 2 && args[0] == "-p" {
-        let cmd = &args[1];
-        println!("complete: {}: no completion specification", cmd);
-         } else {
-        
-        if !args.is_empty() && args[0] != "-p" {
-            eprintln!("complete: flags other than -p are not yet supported");
+            let mut completions: HashMap<String, String> = HashMap::new();
+            if args.len()>=3 && args[0]=="-C"{
+                let path =args[1].clone();
+                let cmd=args[2].clone();
+                completions.insert(cmd,path);
             }
-            }
+           else if args.len() >= 2 && args[0] == "-p" {
+           let cmd = &args[1];
+           if let Some(path)=completions.get(cmd){
+            println!("complete -C '{}' {}",path ,cmd);
+           }
+           else{
+            println!("complete: {}: no completion specification", cmd);
+            } 
         }
+    }
         else if cmd_name == "pwd" {
             match env::current_dir() { //builtin function hota hai
                 Ok(path) => println!("{}", path.display()), //agr path hai to dispaly kr diya hai
