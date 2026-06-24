@@ -391,9 +391,9 @@ fn reap_jobs(bg_jobs: &mut Vec<BgJob>) {
 }
 
 fn handle_pipeline(command_str: &str) {
-    let parts: Vec<&str> = command_str.split('|').collect();
-    if parts.len() != 2 {
-        eprintln!("Error: Only dual-command pipelines are supported.");
+    let stages: Vec<&str> = command_str.split('|').collect();
+    let num_stages = stages.len();
+    if num_stages < 2 {
         return;
     }
     let parse_cmd = |cmd_part: &str| -> Option<(String, Vec<String>)> {
@@ -404,98 +404,82 @@ fn handle_pipeline(command_str: &str) {
             Some((args[0].clone(), args[1..].to_vec()))
         }
     };
-    let (cmd1_name, cmd1_args) = match parse_cmd(parts[0]) {
-        Some(val) => val,
-        None => return,
-    };
-    let (cmd2_name, cmd2_args) = match parse_cmd(parts[1]) {
-        Some(val) => val,
-        None => return,
-    };
     let is_builtin = |cmd: &str| -> bool {
         matches!(cmd, "echo" | "exit" | "type" | "pwd" | "cd" | "jobs")
     };
-    if is_builtin(&cmd1_name) {
-        let mut builtin_output = String::new();
-        if cmd1_name == "echo" {
-            builtin_output = format!("{}\n", cmd1_args.join(" "));
-        } else if cmd1_name == "pwd" {
-            if let Ok(path) = env::current_dir() {
-                builtin_output = format!("{}\n", path.display());
-            }
-        }
-        let cmd2_path = match find_executable(&cmd2_name) {
-            Some(path) => path,
-            None => {
-                println!("{}: command not found", cmd2_name);
-                return;
-            }
+    let mut previous_stdout: Option<Stdio> = None;
+    let mut builtin_output_buffer: Option<String> = None;
+    let mut children = Vec::new();
+    for (i, stage) in stages.iter().enumerate() {
+        let (cmd_name, cmd_args) = match parse_cmd(stage) {
+            Some(val) => val,
+            None => continue,
         };
-        let mut child2 = Command::new(cmd2_path)
-            .args(&cmd2_args)
-            .stdin(Stdio::piped())
-            .spawn()
-            .unwrap();
-        if let Some(mut stdin) = child2.stdin.take() {
-            stdin.write_all(builtin_output.as_bytes()).unwrap();
-        }
-
-        let _ = child2.wait();
-        return;
-    }
-    if is_builtin(&cmd2_name) {
-        let cmd1_path = match find_executable(&cmd1_name) {
-            Some(path) => path,
-            None => {
-                println!("{}: command not found", cmd1_name);
-                return;
-            }
-        };
-        let output1 = Command::new(cmd1_path)
-            .args(&cmd1_args)
-            .stdout(Stdio::piped())
-            .output();
-        if output1.is_ok() {
-            if cmd2_name == "type" && !cmd2_args.is_empty() {
-                let arg = &cmd2_args[0];
+        if is_builtin(&cmd_name) {
+            let mut current_builtin_output = String::new();
+            if cmd_name == "echo" {
+                current_builtin_output = format!("{}\n", cmd_args.join(" "));
+            } else if cmd_name == "pwd" {
+                if let Ok(path) = env::current_dir() {
+                    current_builtin_output = format!("{}\n", path.display());
+                }
+            } else if cmd_name == "type" && !cmd_args.is_empty() {
+                let arg = &cmd_args[0];
                 if is_builtin(arg) {
-                    println!("{} is a shell builtin", arg);
+                    current_builtin_output = format!("{} is a shell builtin\n", arg);
                 } else if let Some(path) = find_executable(arg) {
-                    println!("{} is {}", arg, path.display());
+                    current_builtin_output = format!("{} is {}\n", arg, path.display());
                 } else {
-                    println!("{}: not found", arg);
+                    current_builtin_output = format!("{}: not found\n", arg);
                 }
             }
+            if i == num_stages - 1 {
+                print!("{}", current_builtin_output);
+                io::stdout().flush().unwrap();
+            } else {
+                builtin_output_buffer = Some(current_builtin_output);
+            }
+            continue;
         }
-        return;
+        let cmd_path = match find_executable(&cmd_name) {
+            Some(path) => path,
+            None => {
+                println!("{}: command not found", cmd_name);
+                return;
+            }
+        };
+        let mut cmd = Command::new(cmd_path);
+        cmd.args(&cmd_args);
+        if builtin_output_buffer.is_some() {
+            cmd.stdin(Stdio::piped());
+        } else if let Some(prev_io) = previous_stdout.take() {
+            cmd.stdin(prev_io);
+        }
+        if i < num_stages - 1 {
+            cmd.stdout(Stdio::piped());
+        }
+        match cmd.spawn() {
+            Ok(mut child) => {
+                if let Some(buf) = builtin_output_buffer.take() {
+                    if let Some(mut stdin) = child.stdin.take() {
+                        let _ = stdin.write_all(buf.as_bytes());
+                    }
+                }
+                if i < num_stages - 1 {
+                    if let Some(stdout_handle) = child.stdout.take() {
+                        previous_stdout = Some(Stdio::from(stdout_handle));
+                    }
+                }
+                children.push(child);
+            }
+            Err(_) => {
+                println!("{}: command not found", cmd_name);
+                return;
+            }
+        }
     }
-    let cmd1_path = match find_executable(&cmd1_name) {
-        Some(path) => path,
-        None => {
-            println!("{}: command not found", cmd1_name);
-            return;
-        }
-    };
-    let cmd2_path = match find_executable(&cmd2_name) {
-        Some(path) => path,
-        None => {
-            println!("{}: command not found", cmd2_name);
-            return;
-        }
-    };
-    let mut child1 = Command::new(cmd1_path)
-        .args(&cmd1_args)
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-    if let Some(first_stdout) = child1.stdout.take() {
-        let mut child2 = Command::new(cmd2_path)
-            .args(&cmd2_args)
-            .stdin(Stdio::from(first_stdout))
-            .spawn()
-            .unwrap();
-        let _ = child1.wait();
-        let _ = child2.wait();
+    for mut child in children {
+        let _ = child.wait();
     }
 }
 
