@@ -390,6 +390,76 @@ fn reap_jobs(bg_jobs: &mut Vec<BgJob>) {
     }
 }
 
+fn handle_pipeline(command_str: &str) {
+    let parts: Vec<&str> = command_str.split('|').collect();
+    if parts.len() != 2 {
+        eprintln!("Error: Only dual-command pipelines are supported.");
+        return;
+    }
+
+    let parse_cmd = |cmd_part: &str| -> Option<(String, Vec<String>)> {
+        let args: Vec<String> = cmd_part.split_whitespace().map(|s| s.to_string()).collect();
+        if args.is_empty() {
+            None 
+        } else {
+            Some((args[0].clone(), args[1..].to_vec()))
+        }
+    };
+
+    let (cmd1_name, cmd1_args) = match parse_cmd(parts[0]) {
+        Some(val) => val,
+        None => return,
+    };
+    let (cmd2_name, cmd2_args) = match parse_cmd(parts[1]) {
+        Some(val) => val,
+        None => return,
+    };
+    let cmd1_path = match find_executable(&cmd1_name) {
+        Some(path) => path,
+        None => {
+            println!("{}: command not found", cmd1_name);
+            return;
+        }
+    };
+
+    let cmd2_path = match find_executable(&cmd2_name) {
+        Some(path) => path,
+        None => {
+            println!("{}: command not found", cmd2_name);
+            return;
+        }
+    };
+    let mut child1 = match Command::new(cmd1_path)
+        .args(&cmd1_args)
+        .stdout(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => {
+            println!("{}: command not found", cmd1_name);
+            return;
+        }
+    };
+
+    if let Some(first_stdout) = child1.stdout.take() {
+        let child2 = Command::new(cmd2_path)
+            .args(&cmd2_args)
+            .stdin(Stdio::from(first_stdout))
+            .spawn();
+
+        match child2 {
+            Ok(mut child2) => {
+                let _ = child1.wait();
+                let _ = child2.wait();
+            }
+            Err(_) => {
+                println!("{}: command not found", cmd2_name);
+                let _ = child1.wait();
+            }
+        }
+    }
+}
+
 fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
@@ -410,6 +480,11 @@ fn main() {
             Err(_) => break,
         };
         if command.is_empty() {
+            continue;
+        }
+
+        if command.contains('|'){
+            handle_pipeline(&command);
             continue;
         }
 
