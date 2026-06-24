@@ -403,9 +403,12 @@ fn handle_pipeline(command_str: &str) {
     let is_builtin = |cmd: &str| -> bool {
         matches!(cmd, "echo" | "exit" | "type" | "pwd" | "cd" | "jobs")
     };
-    let mut current_stdin: Option<Stdio> = None;
+
+    // Keep track of the raw ChildStdout rather than converting it to Stdio early
+    let mut current_stdin_handle: Option<std::process::ChildStdout> = None;
     let mut builtin_output_buffer: Option<String> = None;
     let mut children: Vec<Child> = Vec::new();
+
     for (i, stage) in stages.iter().enumerate() {
         let (cmd_name, cmd_args) = match parse_cmd(stage) {
             Some(val) => val,
@@ -446,18 +449,22 @@ fn handle_pipeline(command_str: &str) {
         };
         let mut cmd = Command::new(cmd_path);
         cmd.args(&cmd_args);
+        
         if builtin_output_buffer.is_some() {
             cmd.stdin(Stdio::piped());
-        } else if let Some(stdio) = current_stdin.take() {
-            cmd.stdin(stdio);
+        } else if let Some(stdout_handle) = current_stdin_handle.take() {
+            // Convert to Stdio immediately upon consumption
+            cmd.stdin(Stdio::from(stdout_handle));
         } else {
             cmd.stdin(Stdio::inherit());
         }
+        
         if i < num_stages - 1 {
             cmd.stdout(Stdio::piped());
         } else {
             cmd.stdout(Stdio::inherit());
         }
+        
         match cmd.spawn() {
             Ok(mut child) => {
                 if let Some(buf) = builtin_output_buffer.take() {
@@ -467,7 +474,7 @@ fn handle_pipeline(command_str: &str) {
                 }
                 if i < num_stages - 1 {
                     if let Some(stdout_handle) = child.stdout.take() {
-                        current_stdin = Some(Stdio::from(stdout_handle));
+                        current_stdin_handle = Some(stdout_handle);
                     }
                 }
                 children.push(child);
