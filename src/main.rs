@@ -349,9 +349,6 @@ struct BgJob {
     child: Child,
     command_str: String,
 }
-
-// Derives current (+) and previous (-) job markers from the active background list.
-// The highest job_id is current (+), the second highest is previous (-).
 fn get_markers(bg_jobs: &[BgJob]) -> (Option<u32>, Option<u32>) {
     let mut ids: Vec<u32> = bg_jobs.iter().map(|j| j.job_id).collect();
     ids.sort_unstable();
@@ -389,7 +386,6 @@ fn reap_jobs(bg_jobs: &mut Vec<BgJob>) {
         }
     }
 }
-
 fn handle_pipeline(command_str: &str) {
     let stages: Vec<&str> = command_str.split('|').collect();
     let num_stages = stages.len();
@@ -403,13 +399,13 @@ fn handle_pipeline(command_str: &str) {
         } else {
             Some((args[0].clone(), args[1..].to_vec()))
         }
-    };
+    }; 
     let is_builtin = |cmd: &str| -> bool {
         matches!(cmd, "echo" | "exit" | "type" | "pwd" | "cd" | "jobs")
     };
-    let mut previous_stdout: Option<Stdio> = None;
+    let mut current_stdin: Stdio = Stdio::inherit();
     let mut builtin_output_buffer: Option<String> = None;
-    let mut children = Vec::new();
+    let mut children: Vec<Child> = Vec::new();
     for (i, stage) in stages.iter().enumerate() {
         let (cmd_name, cmd_args) = match parse_cmd(stage) {
             Some(val) => val,
@@ -452,11 +448,13 @@ fn handle_pipeline(command_str: &str) {
         cmd.args(&cmd_args);
         if builtin_output_buffer.is_some() {
             cmd.stdin(Stdio::piped());
-        } else if let Some(prev_io) = previous_stdout.take() {
-            cmd.stdin(prev_io);
+        } else {
+            cmd.stdin(current_stdin);
         }
         if i < num_stages - 1 {
             cmd.stdout(Stdio::piped());
+        } else {
+            cmd.stdout(Stdio::inherit());
         }
         match cmd.spawn() {
             Ok(mut child) => {
@@ -467,7 +465,9 @@ fn handle_pipeline(command_str: &str) {
                 }
                 if i < num_stages - 1 {
                     if let Some(stdout_handle) = child.stdout.take() {
-                        previous_stdout = Some(Stdio::from(stdout_handle));
+                        current_stdin = Stdio::from(stdout_handle);
+                    } else {
+                        current_stdin = Stdio::inherit();
                     }
                 }
                 children.push(child);
