@@ -534,7 +534,13 @@ fn main() {
                     let _file = File::create(file_name).unwrap();
                 }
             }
-        } else if cmd_name == "type" {
+        } 
+            }       else if cmd_name == "history" {
+                    for (index, entry) in r1.history().iter().enumerate() {
+                      println!("  {}  {}", index + 1, entry);
+             }
+                }
+                else if cmd_name == "type" {
             if args.is_empty() {
                 println!("type: missing arguments");
                 continue;
