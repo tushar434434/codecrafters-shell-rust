@@ -34,6 +34,45 @@ fn find_executable(cmd: &str) -> Option<PathBuf> {
     None
 }
 
+// Quote-aware argument parser for pipelines and clean command parsing
+fn parse_arguments(input: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escape = false;
+
+    for c in input.chars() {
+        if escape {
+            current.push(c);
+            escape = false;
+        } else if c == '\\' {
+            if in_double || !in_single {
+                escape = true;
+            } else {
+                current.push(c);
+            }
+        } else if c == '\'' && !in_double {
+            in_single = !in_single;
+        } else if c == '"' && !in_single {
+            in_double = !in_double;
+        } else if (c == ' ' || c == '\t') && !in_single && !in_double {
+            if !current.is_empty() {
+                parts.push(current.clone());
+                current.clear();
+            }
+        } else {
+            current.push(c);
+        }
+    }
+
+    if !current.is_empty() {
+        parts.push(current);
+    }
+
+    parts
+}
+
 struct ShellHelper {
     last_prefix: RefCell<String>,
     tab_count: Cell<usize>,
@@ -41,13 +80,8 @@ struct ShellHelper {
 }
 
 impl Helper for ShellHelper {}
-
-impl Hinter for ShellHelper {
-    type Hint = String;
-}
-
+impl Hinter for ShellHelper { type Hint = String; }
 impl Highlighter for ShellHelper {}
-
 impl Validator for ShellHelper {}
 
 impl Completer for ShellHelper {
@@ -66,13 +100,7 @@ impl Completer for ShellHelper {
                 let words: Vec<&str> = prefix.split_whitespace().collect();
                 
                 let arg1 = cmd_name;
-                
-                let arg2 = if prefix.ends_with(' ') {
-                    ""
-                } else {
-                    words.last().cloned().unwrap_or("")
-                };
-                
+                let arg2 = if prefix.ends_with(' ') { "" } else { words.last().cloned().unwrap_or("") };
                 let arg3 = if prefix.ends_with(' ') {
                     words.last().cloned().unwrap_or("")
                 } else if words.len() >= 2 {
@@ -106,11 +134,7 @@ impl Completer for ShellHelper {
                         for name in candidates.iter().skip(1) {
                             let mut common_len = 0;
                             for (c1, c2) in lcp.chars().zip(name.chars()) {
-                                if c1 == c2 {
-                                    common_len += c1.len_utf8();
-                                } else {
-                                    break;
-                                }
+                                if c1 == c2 { common_len += c1.len_utf8(); } else { break; }
                             }
                             lcp.truncate(common_len);
                         }
@@ -153,33 +177,19 @@ impl Completer for ShellHelper {
             let file_prefix = &prefix[last_space_idx + 1..];
 
             let (search_dir, file_part, replace_pos) = if file_prefix.ends_with('/') {
-                (
-                    PathBuf::from(file_prefix),
-                    "",
-                    pos,
-                )
+                (PathBuf::from(file_prefix), "", pos)
             } else if let Some((d, f)) = file_prefix.rsplit_once('/') {
                 let dir_str = if d.is_empty() { "." } else { d };
-                (
-                    PathBuf::from(dir_str),
-                    f,
-                    last_space_idx + 1 + d.len() + 1,
-                )
+                (PathBuf::from(dir_str), f, last_space_idx + 1 + d.len() + 1)
             } else {
-                (
-                    env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-                    file_prefix,
-                    last_space_idx + 1,
-                )
+                (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix, last_space_idx + 1)
             };
 
             let mut files = Vec::new();
             if let Ok(entries) = std::fs::read_dir(search_dir) {
                 for entry in entries.flatten() {
                     if let Some(name) = entry.file_name().to_str() {
-                        if name.starts_with('.') && !file_part.starts_with('.') {
-                            continue;
-                        }
+                        if name.starts_with('.') && !file_part.starts_with('.') { continue; }
                         if name.starts_with(file_part) {
                             let is_dir = entry.path().is_dir();
                             files.push((name.to_string(), is_dir));
@@ -193,47 +203,20 @@ impl Completer for ShellHelper {
 
             if files.len() == 1 {
                 let (matched_file, is_dir) = &files[0];
-
-                let replacement = if file_prefix.ends_with('/') {
-                    format!(
-                        "{}{}",
-                        matched_file,
-                        if *is_dir { "/" } else { " " }
-                    )
-                } else {
-                    format!(
-                        "{}{}",
-                        matched_file,
-                        if *is_dir { "/" } else { " " }
-                    )
-                };
-
-                let pairs = vec![Pair {
-                    display: replacement.clone(),
-                    replacement,
-                }];
-                return Ok((replace_pos, pairs));
+                let replacement = format!("{}{}", matched_file, if *is_dir { "/" } else { " " });
+                return Ok((replace_pos, vec![Pair { display: replacement.clone(), replacement }]));
             } else if files.len() > 1 {
                 let mut lcp = files[0].0.clone();
                 for (name, _) in files.iter().skip(1) {
                     let mut common_len = 0;
                     for (c1, c2) in lcp.chars().zip(name.chars()) {
-                        if c1 == c2 {
-                            common_len += c1.len_utf8();
-                        } else {
-                            break;
-                        }
+                        if c1 == c2 { common_len += c1.len_utf8(); } else { break; }
                     }
                     lcp.truncate(common_len);
                 }
                 if lcp.len() > file_part.len() {
                     let replacement = lcp.clone();
-
-                    let pairs = vec![Pair {
-                        display: replacement.clone(),
-                        replacement,
-                    }];
-                    return Ok((replace_pos, pairs));
+                    return Ok((replace_pos, vec![Pair { display: replacement.clone(), replacement }]));
                 }
                 let mut last_p = self.last_prefix.borrow_mut();
                 if *last_p == prefix {
@@ -250,11 +233,7 @@ impl Completer for ShellHelper {
                 } else if self.tab_count.get() >= 2 {
                     println!();
                     let display_names: Vec<String> = files.iter().map(|(name, is_dir)| {
-                        if *is_dir {
-                            format!("{}/", name)
-                        } else {
-                            name.clone()
-                        }
+                        if *is_dir { format!("{}/", name) } else { name.clone() }
                     }).collect();
                     println!("{}", display_names.join("  "));
                     print!("$ {}", prefix);
@@ -263,16 +242,11 @@ impl Completer for ShellHelper {
                     return Ok((pos, Vec::new()));
                 }
             }
-
             return Ok((pos, Vec::new()));
         }
         let mut commands = vec![
-            "echo".to_string(),
-            "exit".to_string(),
-            "type".to_string(),
-            "pwd".to_string(),
-            "cd".to_string(),
-            "jobs".to_string(),
+            "echo".to_string(), "exit".to_string(), "type".to_string(),
+            "pwd".to_string(), "cd".to_string(), "jobs".to_string(),
         ];
         if let Ok(path_env) = env::var("PATH") {
             for dir in env::split_paths(&path_env) {
@@ -287,39 +261,22 @@ impl Completer for ShellHelper {
         }
         commands.sort();
         commands.dedup();
-        let matching_names: Vec<String> = commands
-            .into_iter()
-            .filter(|cmd| cmd.starts_with(prefix))
-            .collect();
-        if matching_names.is_empty() {
-            return Ok((0, Vec::new()));
-        }
+        let matching_names: Vec<String> = commands.into_iter().filter(|cmd| cmd.starts_with(prefix)).collect();
+        if matching_names.is_empty() { return Ok((0, Vec::new())); }
         if matching_names.len() == 1 {
             let cmd = &matching_names[0];
-            let pairs = vec![Pair {
-                display: cmd.clone(),
-                replacement: format!("{} ", cmd),
-            }];
-            return Ok((0, pairs));
+            return Ok((0, vec![Pair { display: cmd.clone(), replacement: format!("{} ", cmd) }]));
         }
         let mut lcp = matching_names[0].clone();
         for name in matching_names.iter().skip(1) {
             let mut common_len = 0;
             for (c1, c2) in lcp.chars().zip(name.chars()) {
-                if c1 == c2 {
-                    common_len += c1.len_utf8();
-                } else {
-                    break;
-                }
+                if c1 == c2 { common_len += c1.len_utf8(); } else { break; }
             }
             lcp.truncate(common_len);
         }
         if lcp.len() > prefix.len() {
-            let pairs = vec![Pair {
-                display: lcp.clone(),
-                replacement: lcp,
-            }];
-            return Ok((0, pairs));
+            return Ok((0, vec![Pair { display: lcp.clone(), replacement: lcp }]));
         }
         let mut last_p = self.last_prefix.borrow_mut();
         if *last_p == prefix {
@@ -349,6 +306,7 @@ struct BgJob {
     child: Child,
     command_str: String,
 }
+
 fn get_markers(bg_jobs: &[BgJob]) -> (Option<u32>, Option<u32>) {
     let mut ids: Vec<u32> = bg_jobs.iter().map(|j| j.job_id).collect();
     ids.sort_unstable();
@@ -364,48 +322,38 @@ fn reap_jobs(bg_jobs: &mut Vec<BgJob>) {
             Ok(Some(_status)) => {
                 let removed_id = bg_jobs[i].job_id;
                 let cmd_str = bg_jobs[i].command_str.clone();
-                
                 let (current_id, previous_id) = get_markers(bg_jobs);
-                let marker = if current_id == Some(removed_id) {
-                    "+"
-                } else if previous_id == Some(removed_id) {
-                    "-"
-                } else {
-                    " "
-                };
-                
+                let marker = if current_id == Some(removed_id) { "+" } else if previous_id == Some(removed_id) { "-" } else { " " };
                 println!("[{}]{}  Done                {} ", removed_id, marker, cmd_str);
                 bg_jobs.remove(i);
             }
-            Ok(None) => {
-                i += 1;
-            }
-            Err(_) => {
-                bg_jobs.remove(i);
-            }
+            Ok(None) => { i += 1; }
+            Err(_) => { bg_jobs.remove(i); }
         }
     }
 }
+
 fn handle_pipeline(command_str: &str) {
     let stages: Vec<&str> = command_str.split('|').collect();
     let num_stages = stages.len();
     if num_stages < 2 {
         return;
     }  
+
     let parse_cmd = |cmd_part: &str| -> Option<(String, Vec<String>)> {
-        let args: Vec<String> = cmd_part.split_whitespace().map(|s| s.to_string()).collect();
+        let args = parse_arguments(cmd_part);
         if args.is_empty() {
             None
         } else {
             Some((args[0].clone(), args[1..].to_vec()))
         }
     };
+
     let is_builtin = |cmd: &str| -> bool {
         matches!(cmd, "echo" | "exit" | "type" | "pwd" | "cd" | "jobs")
     };
 
-    // Keep track of the raw ChildStdout rather than converting it to Stdio early
-    let mut current_stdin_handle: Option<std::process::ChildStdout> = None;
+    let mut previous_stdout: Option<std::process::ChildStdout> = None;
     let mut builtin_output_buffer: Option<String> = None;
     let mut children: Vec<Child> = Vec::new();
 
@@ -414,6 +362,7 @@ fn handle_pipeline(command_str: &str) {
             Some(val) => val,
             None => continue,
         };
+
         if is_builtin(&cmd_name) {
             let mut current_builtin_output = String::new();
             if cmd_name == "echo" {
@@ -440,6 +389,7 @@ fn handle_pipeline(command_str: &str) {
             }
             continue;
         }
+
         let cmd_path = match find_executable(&cmd_name) {
             Some(path) => path,
             None => {
@@ -447,24 +397,25 @@ fn handle_pipeline(command_str: &str) {
                 return;
             }
         };
+
         let mut cmd = Command::new(cmd_path);
         cmd.args(&cmd_args);
-        
+
+        // Standard classic chain setup using Stdio configuration
         if builtin_output_buffer.is_some() {
             cmd.stdin(Stdio::piped());
-        } else if let Some(stdout_handle) = current_stdin_handle.take() {
-            // Convert to Stdio immediately upon consumption
-            cmd.stdin(Stdio::from(stdout_handle));
+        } else if let Some(stdout) = previous_stdout.take() {
+            cmd.stdin(Stdio::from(stdout));
         } else {
             cmd.stdin(Stdio::inherit());
         }
-        
+
         if i < num_stages - 1 {
             cmd.stdout(Stdio::piped());
         } else {
             cmd.stdout(Stdio::inherit());
         }
-        
+
         match cmd.spawn() {
             Ok(mut child) => {
                 if let Some(buf) = builtin_output_buffer.take() {
@@ -473,9 +424,7 @@ fn handle_pipeline(command_str: &str) {
                     }
                 }
                 if i < num_stages - 1 {
-                    if let Some(stdout_handle) = child.stdout.take() {
-                        current_stdin_handle = Some(stdout_handle);
-                    }
+                    previous_stdout = child.stdout.take();
                 }
                 children.push(child);
             }
@@ -485,6 +434,7 @@ fn handle_pipeline(command_str: &str) {
             }
         }
     }
+
     for mut child in children {
         let _ = child.wait();
     }
@@ -516,82 +466,50 @@ fn main() {
             continue;
         }
 
-        let mut parts: Vec<String> = Vec::new();
-        let mut current = String::new();
-        let mut in_quotes = false;
-        let mut double_quotes = false;
-        let mut escape = false;
-        for c in command.chars() {
-            if escape {
-                current.push(c);
-                escape = false;
-            } else if c == '\\' {
-                if double_quotes {
-                    escape = true;
-                } else if !in_quotes {
-                    escape = true;
-                } else {
-                    current.push(c);
-                }
-            } else if c == '\'' && !double_quotes {
-                in_quotes = !in_quotes;
-            } else if c == '"' && !in_quotes {
-                double_quotes = !double_quotes;
-            } else if c.is_whitespace() && !in_quotes && !double_quotes {
-                if !current.is_empty() {
-                    parts.push(current.clone());
-                    current.clear();
-                }
-            } else {
-                current.push(c);
-            }
-        }
-        if !current.is_empty() {
-            parts.push(current);
-        }
-        
+        let parts = parse_arguments(&command);
         if parts.is_empty() {
             continue;
         }
 
         let mut is_background = false;
-        if parts.last().map(|s| s.as_str()) == Some("&") {
+        let mut final_parts = parts.clone();
+        if final_parts.last().map(|s| s.as_str()) == Some("&") {
             is_background = true;
-            parts.pop();
+            final_parts.pop();
         }
 
-        if parts.is_empty() {
+        if final_parts.is_empty() {
             continue;
         }
 
-        let cmd_name = parts[0].trim().to_string();
+        let cmd_name = final_parts[0].trim().to_string();
         let mut stdout_file = None;
         let mut stderr_file = None;
         let mut append_stdout = false;
         let mut append_stderr = false;
         let mut args = Vec::new();
         let mut idx = 1;
-        while idx < parts.len() {
-            if parts[idx] == ">" || parts[idx] == "1>" {
-                stdout_file = Some(parts[idx + 1].clone());
+        while idx < final_parts.len() {
+            if final_parts[idx] == ">" || final_parts[idx] == "1>" {
+                stdout_file = Some(final_parts[idx + 1].clone());
                 idx += 2;
                 continue;
-            } else if parts[idx] == ">>" || parts[idx] == "1>>" {
-                stdout_file = Some(parts[idx + 1].clone());
+            } else if final_parts[idx] == ">>" || final_parts[idx] == "1>>" {
+                stdout_file = Some(final_parts[idx + 1].clone());
                 append_stdout = true;
                 idx += 2;
                 continue;
-            } else if parts[idx] == "2>" {
-                stderr_file = Some(parts[idx + 1].clone());
+            } else if final_parts[idx] == "2>" {
+                stderr_file = Some(final_parts[idx + 1].clone());
                 idx += 2;
                 continue;
-            } else if parts[idx] == "2>>" {
-                stderr_file = Some(parts[idx + 1].clone());
+            } else if final_parts[idx] == "2>>" {
+                stderr_file = Some(final_parts[idx + 1].clone());
                 append_stderr = true;
                 idx += 2;
                 continue;
             }
-            args.push(parts[idx].clone());
+            args.push(final_parts[idx].clone());
             idx += 1;
         }
 
@@ -599,15 +517,9 @@ fn main() {
             break;
         } else if cmd_name == "echo" {
             let output = args.join(" ");
-
             if let Some(file_name) = &stdout_file {
                 if append_stdout {
-                    let mut file = OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(file_name)
-                        .unwrap();
-
+                    let mut file = OpenOptions::new().create(true).append(true).open(file_name).unwrap();
                     writeln!(file, "{}", output).unwrap();
                 } else {
                     std::fs::write(file_name, format!("{}\n", output)).unwrap();
@@ -617,11 +529,7 @@ fn main() {
             }
             if let Some(file_name) = &stderr_file {
                 if append_stderr {
-                    let _file = OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(file_name)
-                        .unwrap();
+                    let _file = OpenOptions::new().create(true).append(true).open(file_name).unwrap();
                 } else {
                     let _file = File::create(file_name).unwrap();
                 }
@@ -632,7 +540,6 @@ fn main() {
                 continue;
             }
             let arg = &args[0];
-
             if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete" || arg == "jobs" {
                 println!("{} is a shell builtin", arg);
             } else if let Some(path) = find_executable(arg) {
@@ -644,14 +551,10 @@ fn main() {
             if args.len() >= 3 && args[0] == "-C" {
                 let path = args[1].clone();
                 let cmd = args[2].clone();
-                if let Ok(mut comps) = completions.lock() {
-                    comps.insert(cmd, path);
-                }
+                if let Ok(mut comps) = completions.lock() { comps.insert(cmd, path); }
             } else if args.len() >= 2 && args[0] == "-r" {
                 let cmd = &args[1];
-                if let Ok(mut comps) = completions.lock() {
-                    comps.remove(cmd);
-                }
+                if let Ok(mut comps) = completions.lock() { comps.remove(cmd); }
             } else if args.len() >= 2 && args[0] == "-p" {
                 let cmd = &args[1];
                 if let Ok(comps) = completions.lock() {
@@ -668,30 +571,18 @@ fn main() {
                 Err(_) => eprintln!("pwd: unable to get current directory"),
             }
         } else if cmd_name == "cd" {
-            if args.is_empty() {
-                continue;
-            }
+            if args.is_empty() { continue; }
             let dir = &args[0];
             if dir == "~" {
-                if let Ok(home) = env::var("HOME") {
-                    env::set_current_dir(home).unwrap();
-                }
+                if let Ok(home) = env::var("HOME") { env::set_current_dir(home).unwrap(); }
             } else if let Err(_) = env::set_current_dir(dir) {
                 println!("cd: {}: No such file or directory", dir);
             }
         } else if cmd_name == "jobs" {
             let mut finished = Vec::new();
             let (current_id, previous_id) = get_markers(&bg_jobs);
-
             for job in &mut bg_jobs {
-                let marker = if current_id == Some(job.job_id) {
-                    "+"
-                } else if previous_id == Some(job.job_id) {
-                    "-"
-                } else {
-                    " "
-                };
-
+                let marker = if current_id == Some(job.job_id) { "+" } else if previous_id == Some(job.job_id) { "-" } else { " " };
                 match job.child.try_wait() {
                     Ok(Some(_status)) => {
                         println!("[{}]{}  Done                 {}", job.job_id, marker, job.command_str);
@@ -700,30 +591,18 @@ fn main() {
                     Ok(None) => {
                         println!("[{}]{}  Running                {} &", job.job_id, marker, job.command_str);
                     }
-                    Err(_) => {
-                        finished.push(job.job_id);
-                    }
+                    Err(_) => { finished.push(job.job_id); }
                 }
             }
-
-            // Evict finished jobs after the complete job table has been cleanly printed in order
             bg_jobs.retain(|j| !finished.contains(&j.job_id));
         } else {
             if let Some(_path) = find_executable(&cmd_name) {
-                let args_ref: Vec<&str> = args
-                    .iter()
-                    .map(|s| s.as_str())
-                    .collect();
+                let args_ref: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
                 let mut cmd = Command::new(&cmd_name);
                 cmd.args(args_ref);
                 if let Some(file_name) = &stdout_file {
                     if append_stdout {
-                        let file = OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(file_name)
-                            .unwrap();
-
+                        let file = OpenOptions::new().create(true).append(true).open(file_name).unwrap();
                         cmd.stdout(Stdio::from(file));
                     } else {
                         let file = File::create(file_name).unwrap();
@@ -732,42 +611,20 @@ fn main() {
                 }
                 if let Some(file_name) = &stderr_file {
                     if append_stderr {
-                        let file = OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(file_name)
-                            .unwrap();
-
+                        let file = OpenOptions::new().create(true).append(true).open(file_name).unwrap();
                         cmd.stderr(Stdio::from(file));
                     } else {
                         let file = File::create(file_name).unwrap();
                         cmd.stderr(Stdio::from(file));
                     }
                 } 
-                let mut child = cmd
-                    .spawn()
-                    .unwrap();
-
+                let mut child = cmd.spawn().unwrap();
                 if is_background {
-                    let next_job_id = if bg_jobs.is_empty() {
-                        1
-                    } else {
-                        bg_jobs.iter().map(|j| j.job_id).max().unwrap_or(0) + 1
-                    };
-
+                    let next_job_id = if bg_jobs.is_empty() { 1 } else { bg_jobs.iter().map(|j| j.job_id).max().unwrap_or(0) + 1 };
                     println!("[{}] {}", next_job_id, child.id());
-                    
                     let trailing_args = args.join(" ");
-                    let full_cmd_str = if trailing_args.is_empty() {
-                        cmd_name
-                    } else {
-                        format!("{} {}", cmd_name, trailing_args)
-                    };
-                    bg_jobs.push(BgJob {
-                        job_id: next_job_id,
-                        child,
-                        command_str: full_cmd_str.trim().to_string(),
-                    });
+                    let full_cmd_str = if trailing_args.is_empty() { cmd_name } else { format!("{} {}", cmd_name, trailing_args) };
+                    bg_jobs.push(BgJob { job_id: next_job_id, child, command_str: full_cmd_str.trim().to_string() });
                 } else {
                     child.wait().unwrap();
                 }
