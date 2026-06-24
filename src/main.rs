@@ -391,7 +391,7 @@ fn handle_pipeline(command_str: &str) {
     let num_stages = stages.len();
     if num_stages < 2 {
         return;
-    }
+    }  
     let parse_cmd = |cmd_part: &str| -> Option<(String, Vec<String>)> {
         let args: Vec<String> = cmd_part.split_whitespace().map(|s| s.to_string()).collect();
         if args.is_empty() {
@@ -399,11 +399,11 @@ fn handle_pipeline(command_str: &str) {
         } else {
             Some((args[0].clone(), args[1..].to_vec()))
         }
-    }; 
+    };
     let is_builtin = |cmd: &str| -> bool {
         matches!(cmd, "echo" | "exit" | "type" | "pwd" | "cd" | "jobs")
     };
-    let mut current_stdin: Stdio = Stdio::inherit();
+    let mut current_stdin: Option<Stdio> = None;
     let mut builtin_output_buffer: Option<String> = None;
     let mut children: Vec<Child> = Vec::new();
     for (i, stage) in stages.iter().enumerate() {
@@ -428,7 +428,7 @@ fn handle_pipeline(command_str: &str) {
                 } else {
                     current_builtin_output = format!("{}: not found\n", arg);
                 }
-            }
+            }     
             if i == num_stages - 1 {
                 print!("{}", current_builtin_output);
                 io::stdout().flush().unwrap();
@@ -448,8 +448,10 @@ fn handle_pipeline(command_str: &str) {
         cmd.args(&cmd_args);
         if builtin_output_buffer.is_some() {
             cmd.stdin(Stdio::piped());
+        } else if let Some(stdio) = current_stdin.take() {
+            cmd.stdin(stdio);
         } else {
-            cmd.stdin(current_stdin);
+            cmd.stdin(Stdio::inherit());
         }
         if i < num_stages - 1 {
             cmd.stdout(Stdio::piped());
@@ -465,9 +467,7 @@ fn handle_pipeline(command_str: &str) {
                 }
                 if i < num_stages - 1 {
                     if let Some(stdout_handle) = child.stdout.take() {
-                        current_stdin = Stdio::from(stdout_handle);
-                    } else {
-                        current_stdin = Stdio::inherit();
+                        current_stdin = Some(Stdio::from(stdout_handle));
                     }
                 }
                 children.push(child);
