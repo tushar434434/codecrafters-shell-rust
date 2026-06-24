@@ -396,16 +396,14 @@ fn handle_pipeline(command_str: &str) {
         eprintln!("Error: Only dual-command pipelines are supported.");
         return;
     }
-
     let parse_cmd = |cmd_part: &str| -> Option<(String, Vec<String>)> {
         let args: Vec<String> = cmd_part.split_whitespace().map(|s| s.to_string()).collect();
         if args.is_empty() {
-            None 
+            None
         } else {
             Some((args[0].clone(), args[1..].to_vec()))
         }
     };
-
     let (cmd1_name, cmd1_args) = match parse_cmd(parts[0]) {
         Some(val) => val,
         None => return,
@@ -414,6 +412,63 @@ fn handle_pipeline(command_str: &str) {
         Some(val) => val,
         None => return,
     };
+    let is_builtin = |cmd: &str| -> bool {
+        matches!(cmd, "echo" | "exit" | "type" | "pwd" | "cd" | "jobs")
+    };
+    if is_builtin(&cmd1_name) {
+        let mut builtin_output = String::new();
+        if cmd1_name == "echo" {
+            builtin_output = format!("{}\n", cmd1_args.join(" "));
+        } else if cmd1_name == "pwd" {
+            if let Ok(path) = env::current_dir() {
+                builtin_output = format!("{}\n", path.display());
+            }
+        }
+        let cmd2_path = match find_executable(&cmd2_name) {
+            Some(path) => path,
+            None => {
+                println!("{}: command not found", cmd2_name);
+                return;
+            }
+        };
+        let mut child2 = Command::new(cmd2_path)
+            .args(&cmd2_args)
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        if let Some(mut stdin) = child2.stdin.take() {
+            stdin.write_all(builtin_output.as_bytes()).unwrap();
+        }
+
+        let _ = child2.wait();
+        return;
+    }
+    if is_builtin(&cmd2_name) {
+        let cmd1_path = match find_executable(&cmd1_name) {
+            Some(path) => path,
+            None => {
+                println!("{}: command not found", cmd1_name);
+                return;
+            }
+        };
+        let output1 = Command::new(cmd1_path)
+            .args(&cmd1_args)
+            .stdout(Stdio::piped())
+            .output();
+        if output1.is_ok() {
+            if cmd2_name == "type" && !cmd2_args.is_empty() {
+                let arg = &cmd2_args[0];
+                if is_builtin(arg) {
+                    println!("{} is a shell builtin", arg);
+                } else if let Some(path) = find_executable(arg) {
+                    println!("{} is {}", arg, path.display());
+                } else {
+                    println!("{}: not found", arg);
+                }
+            }
+        }
+        return;
+    }
     let cmd1_path = match find_executable(&cmd1_name) {
         Some(path) => path,
         None => {
@@ -421,7 +476,6 @@ fn handle_pipeline(command_str: &str) {
             return;
         }
     };
-
     let cmd2_path = match find_executable(&cmd2_name) {
         Some(path) => path,
         None => {
@@ -429,43 +483,26 @@ fn handle_pipeline(command_str: &str) {
             return;
         }
     };
-    let mut child1 = match Command::new(cmd1_path)
+    let mut child1 = Command::new(cmd1_path)
         .args(&cmd1_args)
         .stdout(Stdio::piped())
         .spawn()
-    {
-        Ok(child) => child,
-        Err(_) => {
-            println!("{}: command not found", cmd1_name);
-            return;
-        }
-    };
-
+        .unwrap();
     if let Some(first_stdout) = child1.stdout.take() {
-        let child2 = Command::new(cmd2_path)
+        let mut child2 = Command::new(cmd2_path)
             .args(&cmd2_args)
             .stdin(Stdio::from(first_stdout))
-            .spawn();
-
-        match child2 {
-            Ok(mut child2) => {
-                let _ = child1.wait();
-                let _ = child2.wait();
-            }
-            Err(_) => {
-                println!("{}: command not found", cmd2_name);
-                let _ = child1.wait();
-            }
-        }
+            .spawn()
+            .unwrap();
+        let _ = child1.wait();
+        let _ = child2.wait();
     }
 }
 
 fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
-    
     let mut bg_jobs: Vec<BgJob> = Vec::new();
-
     r1.set_helper(Some(ShellHelper {
         last_prefix: RefCell::new(String::new()),
         tab_count: Cell::new(0),
