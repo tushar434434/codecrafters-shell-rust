@@ -533,12 +533,20 @@ fn main() {
                     let _file = File::create(file_name).unwrap();
                 }
             }
-        } else if cmd_name == "history" {
-            for (index, entry) in r1.history().iter().enumerate() {
-                println!("  {}  {}", index + 1, entry);
-            }
-        } else if cmd_name == "type" {
-            if args.is_empty() {
+         } else if cmd_name == "history" {
+             let total_entries = r1.history().len();
+             let limit = if !args.is_empty() {
+              args[0].parse::<usize>().unwrap_or(total_entries)
+                 } else {
+               total_entries
+                };
+                 let skip_count = total_entries.saturating_sub(limit);
+                 for (index, entry) in r1.history().iter().enumerate().skip(skip_count) {
+                  println!("  {}  {}", index + 1, entry);
+                  }
+                }
+                else if cmd_name == "type" {
+             if args.is_empty() {
                 println!("type: missing arguments");
                 continue;
             }
