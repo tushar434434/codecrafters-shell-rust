@@ -11,6 +11,7 @@ use rustyline::{
     history::DefaultHistory,
     highlight::Highlighter,
     hint::Hinter,
+    history::History,
     validate::Validator,
     Context, Editor, Helper,
 };
