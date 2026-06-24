@@ -460,12 +460,11 @@ fn main() {
         if command.is_empty() {
             continue;
         }
-
+        let _ = r1.add_history_entry(&command);
         if command.contains('|'){
             handle_pipeline(&command);
             continue;
         }
-
         let parts = parse_arguments(&command);
         if parts.is_empty() {
             continue;
@@ -534,18 +533,17 @@ fn main() {
                     let _file = File::create(file_name).unwrap();
                 }
             }
-            }       else if cmd_name == "history" {
-                    for (index, entry) in r1.history().iter().enumerate() {
-                      println!("  {}  {}", index + 1, entry);
-             }
-                }
-                else if cmd_name == "type" {
+        } else if cmd_name == "history" {
+            for (index, entry) in r1.history().iter().enumerate() {
+                println!("  {}  {}", index + 1, entry);
+            }
+        } else if cmd_name == "type" {
             if args.is_empty() {
                 println!("type: missing arguments");
                 continue;
             }
             let arg = &args[0];
-            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete" || arg == "jobs"  ||arg=="history" {
+            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete" || arg == "jobs" || arg == "history" {
                 println!("{} is a shell builtin", arg);
             } else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
