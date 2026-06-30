@@ -106,7 +106,7 @@ fn is_valid_identifier(s: &str) -> bool {
             return false;
         }
     }
-    chars.all(|c| c.is_ascii_an_alphanumeric() || c == '_')
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String>) -> String {
