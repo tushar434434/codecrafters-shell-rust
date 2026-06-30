@@ -111,7 +111,7 @@ fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String
         }
     } else if !args.is_empty() {
         if !is_valid_identifier(&args[0]) {
-            format!("declare: `{}`: not a valid identifier\n", args[0])
+            format!("declare: '{}': not a valid identifier\n", args[0])
         } else {
             String::new()
         }
