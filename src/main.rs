@@ -179,6 +179,8 @@ impl Completer for ShellHelper {
     ) -> rustyline::Result<(usize, Vec<Pair>)> {
         let prefix = &line[..pos];
         let cmd_name = line.split_whitespace().next().unwrap_or("");
+        
+        // 1. Custom command completion scripts spec (-C)
         if let Ok(comps) = self.completions.lock() {
             if let Some(path) = comps.get(cmd_name) {
                 let words: Vec<&str> = prefix.split_whitespace().collect();
@@ -257,20 +259,36 @@ impl Completer for ShellHelper {
                 }
             }
         }
-        if let Some(last_space_idx) = prefix.rfind(' ') {
-            let file_prefix = &prefix[last_space_idx + 1..];
+
+        // Determine if we should perform path/file completion or standard executable command completion
+        let is_path_completion = prefix.contains(' ') || prefix.contains('/');
+
+        if is_path_completion {
+            let last_space_idx = prefix.rfind(' ');
+            let file_prefix = match last_space_idx {
+                Some(idx) => &prefix[idx + 1..],
+                None => prefix,
+            };
 
             let (search_dir, file_part, replace_pos) = if file_prefix.ends_with('/') {
                 (PathBuf::from(file_prefix), "", pos)
             } else if let Some((d, f)) = file_prefix.rsplit_once('/') {
                 let dir_str = if d.is_empty() { "." } else { d };
-                (PathBuf::from(dir_str), f, last_space_idx + 1 + d.len() + 1)
+                let base_pos = match last_space_idx {
+                    Some(idx) => idx + 1,
+                    None => 0,
+                };
+                (PathBuf::from(dir_str), f, base_pos + d.len() + 1)
             } else {
-                (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix, last_space_idx + 1)
+                let base_pos = match last_space_idx {
+                    Some(idx) => idx + 1,
+                    None => 0,
+                };
+                (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix, base_pos)
             };
 
             let mut files = Vec::new();
-            if let Ok(entries) = std::fs::read_dir(search_dir) {
+            if let Ok(entries) = std::fs::read_dir(&search_dir) {
                 for entry in entries.flatten() {
                     if let Some(name) = entry.file_name().to_str() {
                         if name.starts_with('.') && !file_part.starts_with('.') { continue; }
@@ -328,6 +346,8 @@ impl Completer for ShellHelper {
             }
             return Ok((pos, Vec::new()));
         }
+
+        // 3. Command Completion (No spaces/slashes in token prefix)
         let mut commands = vec![
             "echo".to_string(), "exit".to_string(), "type".to_string(),
             "pwd".to_string(), "cd".to_string(), "jobs".to_string(), "declare".to_string(),
