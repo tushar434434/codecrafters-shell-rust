@@ -35,34 +35,57 @@ fn find_executable(cmd: &str) -> Option<PathBuf> {
     None
 }
 
-fn parse_arguments(input: &str) -> Vec<String> {
+fn parse_arguments(input: &str, shell_variables: &HashMap<String, String>) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
     let mut in_single = false;
     let mut in_double = false;
     let mut escape = false;
 
-    for c in input.chars() {
+    let chars: Vec<char> = input.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
         if escape {
             current.push(c);
             escape = false;
+            i += 1;
         } else if c == '\\' {
             if in_double || !in_single {
                 escape = true;
             } else {
                 current.push(c);
             }
+            i += 1;
         } else if c == '\'' && !in_double {
             in_single = !in_single;
+            i += 1;
         } else if c == '"' && !in_single {
             in_double = !in_double;
+            i += 1;
+        } else if c == '$' && !in_single {
+            i += 1;
+            let mut var_name = String::new();
+            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+                var_name.push(chars[i]);
+                i += 1;
+            }
+            if !var_name.is_empty() {
+                if let Some(val) = shell_variables.get(&var_name) {
+                    current.push_str(val);
+                }
+            } else {
+                current.push('$');
+            }
         } else if (c == ' ' || c == '\t') && !in_single && !in_double {
             if !current.is_empty() {
                 parts.push(current.clone());
                 current.clear();
             }
+            i += 1;
         } else {
             current.push(c);
+            i += 1;
         }
     }
 
@@ -83,14 +106,13 @@ fn is_valid_identifier(s: &str) -> bool {
             return false;
         }
     }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    chars.all(|c| c.is_ascii_an_alphanumeric() || c == '_')
 }
 
 fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String>) -> String {
     if args.len() >= 2 && args[0] == "-p" {
         let var_name = &args[1];
         if !is_valid_identifier(var_name) {
-            // Updated closing quote from ` to '
             format!("declare: `{}': not a valid identifier\n", var_name)
         } else if let Some(val) = shell_variables.get(var_name) {
             format!("declare -- {}=\"{}\"\n", var_name, val)
@@ -104,7 +126,6 @@ fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String
                 shell_variables.insert(trimmed_name.to_string(), value.to_string());
                 String::new()
             } else {
-                // Updated closing quote from ` to '
                 format!("declare: `{}': not a valid identifier\n", args[0])
             }
         } else {
@@ -112,7 +133,6 @@ fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String
         }
     } else if !args.is_empty() {
         if !is_valid_identifier(&args[0]) {
-            // Updated closing quote from ` to '
             format!("declare: `{}': not a valid identifier\n", args[0])
         } else {
             String::new()
@@ -389,8 +409,8 @@ fn handle_pipeline(command_str: &str, shell_variables: &mut HashMap<String, Stri
         return;
     }  
 
-    let parse_cmd = |cmd_part: &str| -> Option<(String, Vec<String>)> {
-        let args = parse_arguments(cmd_part);
+    let parse_cmd = |cmd_part: &str, vars: &HashMap<String, String>| -> Option<(String, Vec<String>)> {
+        let args = parse_arguments(cmd_part, vars);
         if args.is_empty() {
             None
         } else {
@@ -407,7 +427,7 @@ fn handle_pipeline(command_str: &str, shell_variables: &mut HashMap<String, Stri
     let mut children: Vec<Child> = Vec::new();
 
     for (i, stage) in stages.iter().enumerate() {
-        let (cmd_name, cmd_args) = match parse_cmd(stage) {
+        let (cmd_name, cmd_args) = match parse_cmd(stage, shell_variables) {
             Some(val) => val,
             None => continue,
         };
@@ -534,7 +554,7 @@ fn main() {
             handle_pipeline(&command, &mut shell_variables);
             continue;
         }
-        let parts = parse_arguments(&command);
+        let parts = parse_arguments(&command, &shell_variables);
         if parts.is_empty() {
             continue;
         }
