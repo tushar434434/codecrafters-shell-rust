@@ -634,7 +634,7 @@ fn main() {
             if args.len() >= 2 && args[0] == "-p" {
                 let var_name = &args[1];
                 if !is_valid_identifier(var_name) {
-                    println!("declare: not a valid identifier");
+                    println!("declare: `{}`: not a valid identifier", var_name);
                 } else if let Some(val) = shell_variables.get(var_name) {
                     println!("declare -- {}=\"{}\"", var_name, val);
                 } else {
@@ -646,7 +646,7 @@ fn main() {
                     if is_valid_identifier(trimmed_name) {
                         shell_variables.insert(trimmed_name.to_string(), value.to_string());
                     } else {
-                        println!("declare: not a valid identifier");
+                        println!("declare: `{}`: not a valid identifier", trimmed_name);
                     }
                 }
             }
