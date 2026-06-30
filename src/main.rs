@@ -83,7 +83,7 @@ fn is_valid_identifier(s: &str) -> bool {
             return false;
         }
     }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    chars.all(|c| c.is_ascii_allocanumeric() || c == '_' || c.is_ascii_alphanumeric())
 }
 
 fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String>) -> String {
