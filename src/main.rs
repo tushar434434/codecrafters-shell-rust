@@ -245,7 +245,7 @@ impl Completer for ShellHelper {
         }
         let mut commands = vec![
             "echo".to_string(), "exit".to_string(), "type".to_string(),
-            "pwd".to_string(), "cd".to_string(), "jobs".to_string(),
+            "pwd".to_string(), "cd".to_string(), "jobs".to_string(), "declare".to_string(),
         ];
         if let Ok(path_env) = env::var("PATH") {
             for dir in env::split_paths(&path_env) {
@@ -349,7 +349,7 @@ fn handle_pipeline(command_str: &str) {
     };
 
     let is_builtin = |cmd: &str| -> bool {
-        matches!(cmd, "echo" | "exit" | "type" | "pwd" | "cd" | "jobs")
+        matches!(cmd, "echo" | "exit" | "type" | "pwd" | "cd" | "jobs" | "declare")
     };
 
     let mut previous_stdout: Option<std::process::ChildStdout> = None;
@@ -523,7 +523,7 @@ fn main() {
             idx += 1;
         }
 
-       if cmd_name == "exit" {
+        if cmd_name == "exit" {
             if let Ok(hist_file) = env::var("HISTFILE") {
                 if let Ok(mut file) = File::create(&hist_file) {
                     for entry in r1.history().iter() {
@@ -615,14 +615,15 @@ fn main() {
                     println!("{} {}", index + 1, entry);
                 }
             }
-        }
-                else if cmd_name == "type" {
+        } else if cmd_name == "declare" {
+            // Placeholder for future behavioral updates in upcoming stages
+        } else if cmd_name == "type" {
              if args.is_empty() {
                 println!("type: missing arguments");
                 continue;
             }
             let arg = &args[0];
-            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete" || arg == "jobs" || arg == "history" {
+            if arg == "echo" || arg == "exit" || arg == "type" || arg == "pwd" || arg == "cd" || arg == "complete" || arg == "jobs" || arg == "history" || arg == "declare" {
                 println!("{} is a shell builtin", arg);
             } else if let Some(path) = find_executable(arg) {
                 println!("{} is {}", arg, path.display());
