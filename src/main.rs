@@ -270,21 +270,18 @@ impl Completer for ShellHelper {
                 None => prefix,
             };
 
-            let (search_dir, file_part, replace_pos) = if file_prefix.ends_with('/') {
-                (PathBuf::from(file_prefix), "", pos)
+            let base_pos = match last_space_idx {
+                Some(idx) => idx + 1,
+                None => 0,
+            };
+
+            let (search_dir, file_part) = if file_prefix.ends_with('/') {
+                (PathBuf::from(file_prefix), "")
             } else if let Some((d, f)) = file_prefix.rsplit_once('/') {
                 let dir_str = if d.is_empty() { "." } else { d };
-                let base_pos = match last_space_idx {
-                    Some(idx) => idx + 1,
-                    None => 0,
-                };
-                (PathBuf::from(dir_str), f, base_pos + d.len() + 1)
+                (PathBuf::from(dir_str), f)
             } else {
-                let base_pos = match last_space_idx {
-                    Some(idx) => idx + 1,
-                    None => 0,
-                };
-                (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix, base_pos)
+                (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix)
             };
 
             let mut files = Vec::new();
@@ -305,8 +302,15 @@ impl Completer for ShellHelper {
 
             if files.len() == 1 {
                 let (matched_file, is_dir) = &files[0];
-                let replacement = format!("{}{}", matched_file, if *is_dir { "/" } else { " " });
-                return Ok((replace_pos, vec![Pair { display: replacement.clone(), replacement }]));
+                let replacement = if let Some((dir, _)) = file_prefix.rsplit_once('/') {
+                    format!("{}/{}{}", dir, matched_file, if *is_dir { "/" } else { " " })
+                } else if file_prefix.ends_with('/') {
+                    format!("{}{}{}", file_prefix, matched_file, if *is_dir { "/" } else { " " })
+                } else {
+                    format!("{}{}", matched_file, if *is_dir { "/" } else { " " })
+                };
+
+                return Ok((base_pos, vec![Pair { display: replacement.clone(), replacement }]));
             } else if files.len() > 1 {
                 let mut lcp = files[0].0.clone();
                 for (name, _) in files.iter().skip(1) {
@@ -317,8 +321,14 @@ impl Completer for ShellHelper {
                     lcp.truncate(common_len);
                 }
                 if lcp.len() > file_part.len() {
-                    let replacement = lcp.clone();
-                    return Ok((replace_pos, vec![Pair { display: replacement.clone(), replacement }]));
+                    let replacement = if let Some((dir, _)) = file_prefix.rsplit_once('/') {
+                        format!("{}/{}", dir, lcp)
+                    } else if file_prefix.ends_with('/') {
+                        format!("{}{}", file_prefix, lcp)
+                    } else {
+                        lcp.clone()
+                    };
+                    return Ok((base_pos, vec![Pair { display: replacement.clone(), replacement }]));
                 }
                 let mut last_p = self.last_prefix.borrow_mut();
                 if *last_p == prefix {
