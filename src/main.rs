@@ -575,7 +575,7 @@ fn main() {
                 }
             }
         }
-        }
+        
                 else if cmd_name == "type" {
              if args.is_empty() {
                 println!("type: missing arguments");
