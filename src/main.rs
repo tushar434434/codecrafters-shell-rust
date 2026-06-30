@@ -86,7 +86,6 @@ fn is_valid_identifier(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-// Updated error strings to use standard Bash backtick-singlequote style formatting
 fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String>) -> String {
     if args.len() >= 2 && args[0] == "-p" {
         let var_name = &args[1];
@@ -431,8 +430,13 @@ fn handle_pipeline(command_str: &str, shell_variables: &mut HashMap<String, Stri
                 }
             }     
             if i == num_stages - 1 {
-                print!("{}", current_builtin_output);
-                io::stdout().flush().unwrap();
+                if current_builtin_output.contains("not a valid identifier") || current_builtin_output.contains("not found") {
+                    eprint!("{}", current_builtin_output);
+                    let _ = io::stderr().flush();
+                } else {
+                    print!("{}", current_builtin_output);
+                    let _ = io::stdout().flush();
+                }
             } else {
                 builtin_output_buffer = Some(current_builtin_output);
             }
@@ -669,8 +673,13 @@ fn main() {
         } else if cmd_name == "declare" {
             let output = execute_declare(&args, &mut shell_variables);
             if !output.is_empty() {
-                print!("{}", output);
-                io::stdout().flush().unwrap();
+                if output.contains("not a valid identifier") || output.contains("not found") {
+                    eprint!("{}", output);
+                    let _ = io::stderr().flush();
+                } else {
+                    print!("{}", output);
+                    let _ = io::stdout().flush();
+                }
             }
         } else if cmd_name == "type" {
              if args.is_empty() {
