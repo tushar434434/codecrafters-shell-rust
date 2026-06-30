@@ -86,6 +86,34 @@ fn is_valid_identifier(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+// Extracted declare logic to ensure consistency across execution paths
+fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String>) -> String {
+    if args.len() >= 2 && args[0] == "-p" {
+        let var_name = &args[1];
+        if !is_valid_identifier(var_name) {
+            format!("declare: `{}`: not a valid identifier\n", var_name)
+        } else if let Some(val) = shell_variables.get(var_name) {
+            format!("declare -- {}=\"{}\"\n", var_name, val)
+        } else {
+            format!("declare: {}: not found\n", var_name)
+        }
+    } else if !args.is_empty() && args[0].contains('=') {
+        if let Some((name, value)) = args[0].split_once('=') {
+            let trimmed_name = name.trim();
+            if is_valid_identifier(trimmed_name) {
+                shell_variables.insert(trimmed_name.to_string(), value.to_string());
+                String::new()
+            } else {
+                format!("declare: `{}`: not a valid identifier\n", trimmed_name)
+            }
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    }
+}
+
 struct ShellHelper {
     last_prefix: RefCell<String>,
     tab_count: Cell<usize>,
@@ -346,7 +374,7 @@ fn reap_jobs(bg_jobs: &mut Vec<BgJob>) {
     }
 }
 
-fn handle_pipeline(command_str: &str) {
+fn handle_pipeline(command_str: &str, shell_variables: &mut HashMap<String, String>) {
     let stages: Vec<&str> = command_str.split('|').collect();
     let num_stages = stages.len();
     if num_stages < 2 {
@@ -384,6 +412,8 @@ fn handle_pipeline(command_str: &str) {
                 if let Ok(path) = env::current_dir() {
                     current_builtin_output = format!("{}\n", path.display());
                 }
+            } else if cmd_name == "declare" {
+                current_builtin_output = execute_declare(&cmd_args, shell_variables);
             } else if cmd_name == "type" && !cmd_args.is_empty() {
                 let arg = &cmd_args[0];
                 if is_builtin(arg) {
@@ -488,7 +518,7 @@ fn main() {
         }
         let _ = r1.add_history_entry(&command);
         if command.contains('|'){
-            handle_pipeline(&command);
+            handle_pipeline(&command, &mut shell_variables);
             continue;
         }
         let parts = parse_arguments(&command);
@@ -631,24 +661,10 @@ fn main() {
                 }
             }
         } else if cmd_name == "declare" {
-            if args.len() >= 2 && args[0] == "-p" {
-                let var_name = &args[1];
-                if !is_valid_identifier(var_name) {
-                    println!("declare: `{}`: not a valid identifier", var_name);
-                } else if let Some(val) = shell_variables.get(var_name) {
-                    println!("declare -- {}=\"{}\"", var_name, val);
-                } else {
-                    println!("declare: {}: not found", var_name);
-                }
-            } else if !args.is_empty() && args[0].contains('=') {
-                if let Some((name, value)) = args[0].split_once('=') {
-                    let trimmed_name = name.trim();
-                    if is_valid_identifier(trimmed_name) {
-                        shell_variables.insert(trimmed_name.to_string(), value.to_string());
-                    } else {
-                        println!("declare: `{}`: not a valid identifier", trimmed_name);
-                    }
-                }
+            let output = execute_declare(&args, &mut shell_variables);
+            if !output.is_empty() {
+                print!("{}", output);
+                io::stdout().flush().unwrap();
             }
         } else if cmd_name == "type" {
              if args.is_empty() {
