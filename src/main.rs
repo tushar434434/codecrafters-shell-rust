@@ -177,10 +177,21 @@ impl Completer for ShellHelper {
         pos: usize,
         _: &Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Pair>)> {
+        // --- DEBUG PRINTS FOR TRACING ---
+        eprintln!("LINE='{}' POS={}", line, pos);
+
         let prefix = &line[..pos];
         let cmd_name = line.split_whitespace().next().unwrap_or("");
         
-        // 1. Custom command completion scripts spec (-C)
+        // 1. Unify Token and Replacement Position Extraction
+        let last_space = prefix.rfind(' ');
+        let token = match last_space {
+            Some(i) => &prefix[i + 1..],
+            None => prefix,
+        };
+        let replace_pos = pos - token.len();
+
+        // 2. Custom command completion scripts spec (-C)
         if let Ok(comps) = self.completions.lock() {
             if let Some(path) = comps.get(cmd_name) {
                 let words: Vec<&str> = prefix.split_whitespace().collect();
@@ -210,8 +221,7 @@ impl Completer for ShellHelper {
 
                     if candidates.len() == 1 {
                         let candidate = &candidates[0];
-                        let replace_pos = pos - arg2.len();
-                        return Ok((replace_pos, vec![Pair {
+                        return Ok((pos - arg2.len(), vec![Pair {
                             display: candidate.clone(),
                             replacement: format!("{} ", candidate),
                         }]));
@@ -225,10 +235,10 @@ impl Completer for ShellHelper {
                             lcp.truncate(common_len);
                         }
 
-                        let replace_pos = pos - arg2.len();
+                        let custom_replace_pos = pos - arg2.len();
 
                         if lcp.len() > arg2.len() {
-                            return Ok((replace_pos, vec![Pair {
+                            return Ok((custom_replace_pos, vec![Pair {
                                 display: lcp.clone(),
                                 replacement: lcp,
                             }]));
@@ -260,158 +270,160 @@ impl Completer for ShellHelper {
             }
         }
 
-        // Determine if we should perform path/file completion or standard executable command completion
-        let is_path_completion = prefix.contains(' ') || prefix.contains('/');
-
-        if is_path_completion {
-            let last_space_idx = prefix.rfind(' ');
-            let file_prefix = match last_space_idx {
-                Some(idx) => &prefix[idx + 1..],
-                None => prefix,
-            };
-
-            let base_pos = match last_space_idx {
-                Some(idx) => idx + 1,
-                None => 0,
-            };
-
-            let (search_dir, file_part) = if file_prefix.ends_with('/') {
-                (PathBuf::from(file_prefix), "")
-            } else if let Some((d, f)) = file_prefix.rsplit_once('/') {
-                let dir_str = if d.is_empty() { "." } else { d };
-                (PathBuf::from(dir_str), f)
-            } else {
-                (env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), file_prefix)
-            };
-
-            let mut files = Vec::new();
-            if let Ok(entries) = std::fs::read_dir(&search_dir) {
-                for entry in entries.flatten() {
-                    if let Some(name) = entry.file_name().to_str() {
-                        if name.starts_with('.') && !file_part.starts_with('.') { continue; }
-                        if name.starts_with(file_part) {
-                            let is_dir = entry.path().is_dir();
-                            files.push((name.to_string(), is_dir));
+        // 3. Command Completion (No paths inside the first word token)
+        if last_space.is_none() && !token.contains('/') {
+            let mut commands = vec![
+                "echo".to_string(), "exit".to_string(), "type".to_string(),
+                "pwd".to_string(), "cd".to_string(), "jobs".to_string(), "declare".to_string(),
+            ];
+            if let Ok(path_env) = env::var("PATH") {
+                for dir in env::split_paths(&path_env) {
+                    if let Ok(entries) = std::fs::read_dir(dir) {
+                        for entry in entries.flatten() {
+                            if let Some(name) = entry.file_name().to_str() {
+                                commands.push(name.to_string());
+                            }
                         }
                     }
                 }
             }
-
-            files.sort_by(|a, b| a.0.cmp(&b.0));
-            files.dedup_by(|a, b| a.0 == b.0);
-
-            if files.len() == 1 {
-                let (matched_file, is_dir) = &files[0];
-                let replacement = if let Some((dir, _)) = file_prefix.rsplit_once('/') {
-                    format!("{}/{}{}", dir, matched_file, if *is_dir { "/" } else { " " })
-                } else if file_prefix.ends_with('/') {
-                    format!("{}{}{}", file_prefix, matched_file, if *is_dir { "/" } else { " " })
-                } else {
-                    format!("{}{}", matched_file, if *is_dir { "/" } else { " " })
-                };
-
-                return Ok((base_pos, vec![Pair { display: replacement.clone(), replacement }]));
-            } else if files.len() > 1 {
-                let mut lcp = files[0].0.clone();
-                for (name, _) in files.iter().skip(1) {
-                    let mut common_len = 0;
-                    for (c1, c2) in lcp.chars().zip(name.chars()) {
-                        if c1 == c2 { common_len += c1.len_utf8(); } else { break; }
-                    }
-                    lcp.truncate(common_len);
+            commands.sort();
+            commands.dedup();
+            let matching_names: Vec<String> = commands.into_iter().filter(|cmd| cmd.starts_with(token)).collect();
+            if matching_names.is_empty() { return Ok((pos, Vec::new())); }
+            if matching_names.len() == 1 {
+                let cmd = &matching_names[0];
+                return Ok((replace_pos, vec![Pair { display: cmd.clone(), replacement: format!("{} ", cmd) }]));
+            }
+            let mut lcp = matching_names[0].clone();
+            for name in matching_names.iter().skip(1) {
+                let mut common_len = 0;
+                for (c1, c2) in lcp.chars().zip(name.chars()) {
+                    if c1 == c2 { common_len += c1.len_utf8(); } else { break; }
                 }
-                if lcp.len() > file_part.len() {
-                    let replacement = if let Some((dir, _)) = file_prefix.rsplit_once('/') {
-                        format!("{}/{}", dir, lcp)
-                    } else if file_prefix.ends_with('/') {
-                        format!("{}{}", file_prefix, lcp)
-                    } else {
-                        lcp.clone()
-                    };
-                    return Ok((base_pos, vec![Pair { display: replacement.clone(), replacement }]));
-                }
-                let mut last_p = self.last_prefix.borrow_mut();
-                if *last_p == prefix {
-                    self.tab_count.set(self.tab_count.get() + 1);
-                } else {
-                    self.tab_count.set(1);
-                    *last_p = prefix.to_string();
-                }
-
-                if self.tab_count.get() == 1 {
-                    print!("\x07");
-                    io::stdout().flush().unwrap();
-                    return Ok((pos, Vec::new()));
-                } else if self.tab_count.get() >= 2 {
-                    println!();
-                    let display_names: Vec<String> = files.iter().map(|(name, is_dir)| {
-                        if *is_dir { format!("{}/", name) } else { name.clone() }
-                    }).collect();
-                    println!("{}", display_names.join("  "));
-                    print!("$ {}", prefix);
-                    io::stdout().flush().unwrap();
-                    self.tab_count.set(0);
-                    return Ok((pos, Vec::new()));
-                }
+                lcp.truncate(common_len);
+            }
+            if lcp.len() > token.len() {
+                return Ok((replace_pos, vec![Pair { display: lcp.clone(), replacement: lcp }]));
+            }
+            let mut last_p = self.last_prefix.borrow_mut();
+            if *last_p == prefix {
+                self.tab_count.set(self.tab_count.get() + 1);
+            } else {
+                self.tab_count.set(1);
+                *last_p = prefix.to_string();
+            }
+            if self.tab_count.get() == 1 {
+                print!("\x07");
+                io::stdout().flush().unwrap();
+                return Ok((pos, Vec::new()));
+            } else if self.tab_count.get() >= 2 {
+                println!();
+                println!("{}", matching_names.join("  "));
+                print!("$ {}", prefix);
+                io::stdout().flush().unwrap();
+                self.tab_count.set(0);
+                return Ok((pos, Vec::new()));
             }
             return Ok((pos, Vec::new()));
         }
 
-        // 3. Command Completion (No spaces/slashes in token prefix)
-        let mut commands = vec![
-            "echo".to_string(), "exit".to_string(), "type".to_string(),
-            "pwd".to_string(), "cd".to_string(), "jobs".to_string(), "declare".to_string(),
-        ];
-        if let Ok(path_env) = env::var("PATH") {
-            for dir in env::split_paths(&path_env) {
-                if let Ok(entries) = std::fs::read_dir(dir) {
-                    for entry in entries.flatten() {
-                        if let Some(name) = entry.file_name().to_str() {
-                            commands.push(name.to_string());
-                        }
+        // 4. Robust Path/Filename Completion Logic
+        let (search_dir, partial_name, prefix_path) = if let Some((dir, file)) = token.rsplit_once('/') {
+            (
+                PathBuf::from(if dir.is_empty() { "/" } else { dir }),
+                file,
+                format!("{}/", dir),
+            )
+        } else {
+            (
+                env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                token,
+                String::new(),
+            )
+        };
+
+        // --- DEBUG PRINTS FOR PATH TRACING ---
+        eprintln!("TOKEN='{}'", token);
+        eprintln!("SEARCH_DIR={:?}", search_dir);
+        eprintln!("FILE_PART='{}'", partial_name);
+
+        let mut files = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&search_dir) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with('.') && !partial_name.starts_with('.') { continue; }
+                    if name.starts_with(partial_name) {
+                        let is_dir = entry.path().is_dir();
+                        files.push((name.to_string(), is_dir));
                     }
                 }
             }
         }
-        commands.sort();
-        commands.dedup();
-        let matching_names: Vec<String> = commands.into_iter().filter(|cmd| cmd.starts_with(prefix)).collect();
-        if matching_names.is_empty() { return Ok((0, Vec::new())); }
-        if matching_names.len() == 1 {
-            let cmd = &matching_names[0];
-            return Ok((0, vec![Pair { display: cmd.clone(), replacement: format!("{} ", cmd) }]));
-        }
-        let mut lcp = matching_names[0].clone();
-        for name in matching_names.iter().skip(1) {
-            let mut common_len = 0;
-            for (c1, c2) in lcp.chars().zip(name.chars()) {
-                if c1 == c2 { common_len += c1.len_utf8(); } else { break; }
+
+        files.sort_by(|a, b| a.0.cmp(&b.0));
+        files.dedup_by(|a, b| a.0 == b.0);
+
+        if files.len() == 1 {
+            let (matched_file, is_dir) = &files[0];
+            let replacement = format!(
+                "{}{}{}",
+                prefix_path,
+                matched_file,
+                if *is_dir { "/" } else { " " }
+            );
+
+            return Ok((
+                replace_pos,
+                vec![Pair {
+                    display: replacement.clone(),
+                    replacement,
+                }],
+            ));
+        } else if files.len() > 1 {
+            let mut lcp = files[0].0.clone();
+            for (name, _) in files.iter().skip(1) {
+                let mut common_len = 0;
+                for (c1, c2) in lcp.chars().zip(name.chars()) {
+                    if c1 == c2 { common_len += c1.len_utf8(); } else { break; }
+                }
+                lcp.truncate(common_len);
             }
-            lcp.truncate(common_len);
+            if lcp.len() > partial_name.len() {
+                let replacement = format!("{}{}", prefix_path, lcp);
+                return Ok((
+                    replace_pos,
+                    vec![Pair {
+                        display: replacement.clone(),
+                        replacement,
+                    }],
+                ));
+            }
+            let mut last_p = self.last_prefix.borrow_mut();
+            if *last_p == prefix {
+                self.tab_count.set(self.tab_count.get() + 1);
+            } else {
+                self.tab_count.set(1);
+                *last_p = prefix.to_string();
+            }
+
+            if self.tab_count.get() == 1 {
+                print!("\x07");
+                io::stdout().flush().unwrap();
+                return Ok((pos, Vec::new()));
+            } else if self.tab_count.get() >= 2 {
+                println!();
+                let display_names: Vec<String> = files.iter().map(|(name, is_dir)| {
+                    if *is_dir { format!("{}/", name) } else { name.clone() }
+                }).collect();
+                println!("{}", display_names.join("  "));
+                print!("$ {}", prefix);
+                io::stdout().flush().unwrap();
+                self.tab_count.set(0);
+                return Ok((pos, Vec::new()));
+            }
         }
-        if lcp.len() > prefix.len() {
-            return Ok((0, vec![Pair { display: lcp.clone(), replacement: lcp }]));
-        }
-        let mut last_p = self.last_prefix.borrow_mut();
-        if *last_p == prefix {
-            self.tab_count.set(self.tab_count.get() + 1);
-        } else {
-            self.tab_count.set(1);
-            *last_p = prefix.to_string();
-        }
-        if self.tab_count.get() == 1 {
-            print!("\x07");
-            io::stdout().flush().unwrap();
-            return Ok((0, Vec::new()));
-        } else if self.tab_count.get() >= 2 {
-            println!();
-            println!("{}", matching_names.join("  "));
-            print!("$ {}", prefix);
-            io::stdout().flush().unwrap();
-            self.tab_count.set(0);
-            return Ok((0, Vec::new()));
-        }
-        Ok((0, Vec::new()))
+        Ok((pos, Vec::new()))
     }
 }
 
@@ -513,7 +525,7 @@ fn handle_pipeline(command_str: &str, shell_variables: &mut HashMap<String, Stri
 
         let cmd_path = match find_executable(&cmd_name) {
             Some(path) => path,
-            None => {
+            None {
                 println!("{}: command not found", cmd_name);
                 return;
             }
