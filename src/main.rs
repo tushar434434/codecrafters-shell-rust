@@ -91,7 +91,7 @@ fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String
     if args.len() >= 2 && args[0] == "-p" {
         let var_name = &args[1];
         if !is_valid_identifier(var_name) {
-            format!("declare: `{}`: not a valid identifier\n", var_name)
+            format!("declare: '{}': not a valid identifier\n", var_name)
         } else if let Some(val) = shell_variables.get(var_name) {
             format!("declare -- {}=\"{}\"\n", var_name, val)
         } else {
