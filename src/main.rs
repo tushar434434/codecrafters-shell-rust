@@ -65,17 +65,32 @@ fn parse_arguments(input: &str, shell_variables: &HashMap<String, String>) -> Ve
             i += 1;
         } else if c == '$' && !in_single {
             i += 1;
-            let mut var_name = String::new();
-            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
-                var_name.push(chars[i]);
-                i += 1;
-            }
-            if !var_name.is_empty() {
+            if i < chars.len() && chars[i] == '{' {
+                i += 1; // Skip '{'
+                let mut var_name = String::new();
+                while i < chars.len() && chars[i] != '}' {
+                    var_name.push(chars[i]);
+                    i += 1;
+                }
+                if i < chars.len() && chars[i] == '}' {
+                    i += 1; // Skip '}'
+                }
                 if let Some(val) = shell_variables.get(&var_name) {
                     current.push_str(val);
                 }
             } else {
-                current.push('$');
+                let mut var_name = String::new();
+                while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+                    var_name.push(chars[i]);
+                    i += 1;
+                }
+                if !var_name.is_empty() {
+                    if let Some(val) = shell_variables.get(&var_name) {
+                        current.push_str(val);
+                    }
+                } else {
+                    current.push('$');
+                }
             }
         } else if (c == ' ' || c == '\t') && !in_single && !in_double {
             if !current.is_empty() {
