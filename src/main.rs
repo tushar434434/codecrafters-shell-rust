@@ -523,7 +523,17 @@ fn main() {
             idx += 1;
         }
 
-        if cmd_name == "exit" {
+       if cmd_name == "exit" {
+            if let Ok(hist_file) = env::var("HISTFILE") {
+                if let Ok(mut file) = File::create(&hist_file) {
+                    for entry in r1.history().iter() {
+                        if let Err(e) = writeln!(file, "{}", entry) {
+                            eprintln!("history: error writing to HISTFILE on exit: {}", e);
+                            break;
+                        }
+                    }
+                }
+            }
             break;
         } else if cmd_name == "echo" {
             let output = args.join(" ");
