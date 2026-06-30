@@ -531,7 +531,22 @@ fn main() {
                 }
             }
         } else if cmd_name == "history" {
-            if args.len() >= 2 && args[0] == "-r" {
+            if args.len() >= 2 && args[0] == "-a" {
+                let file_path = &args[1];
+                match OpenOptions::new().create(true).append(true).open(file_path) {
+                    Ok(mut file) => {
+                        for entry in r1.history().iter() {
+                            if let Err(e) = writeln!(file, "{}", entry) {
+                                eprintln!("history: error appending to file: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("history: {}: {}", file_path, e);
+                    }
+                }
+            } else if args.len() >= 2 && args[0] == "-r" {
                 let file_path = &args[1];
                 use std::fs::File;
                 use std::io::{BufRead, BufReader};
@@ -546,7 +561,6 @@ fn main() {
                 } else {
                     eprintln!("history: {}: No such file or directory", file_path);
                 }
-                
             } else if args.len() >= 2 && args[0] == "-w" {
                 let file_path = &args[1];
                 match File::create(file_path) {
@@ -575,7 +589,6 @@ fn main() {
                 }
             }
         }
-        
                 else if cmd_name == "type" {
              if args.is_empty() {
                 println!("type: missing arguments");
