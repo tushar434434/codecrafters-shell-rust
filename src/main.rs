@@ -441,12 +441,25 @@ fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
     let mut bg_jobs: Vec<BgJob> = Vec::new();
+
+    if let Ok(hist_file) = env::var("HISTFILE") {
+        use std::io::{BufRead, BufReader};
+        if let Ok(file) = File::open(&hist_file) {
+            let reader = BufReader::new(file);
+            for line in reader.lines().flatten() {
+                if !line.trim().is_empty() {
+                    let _ = r1.add_history_entry(&line);
+                }
+            }
+        }
+    }
+
     r1.set_helper(Some(ShellHelper {
         last_prefix: RefCell::new(String::new()),
         tab_count: Cell::new(0),
         completions: Arc::clone(&completions),
     }));
-    let mut last_appended_idx = 0;
+    let mut last_appended_idx = r1.history().len();
 
     loop {
         reap_jobs(&mut bg_jobs);
@@ -561,6 +574,7 @@ fn main() {
                             let _ = r1.add_history_entry(&line);
                         }
                     }
+                    last_appended_idx = r1.history().len();
                 } else {
                     eprintln!("history: {}: No such file or directory", file_path);
                 }
