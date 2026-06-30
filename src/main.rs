@@ -86,12 +86,12 @@ fn is_valid_identifier(s: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
-// Fixed to return the entire raw argument when an assignment identifier is invalid
+// Updated error strings to use standard Bash backtick-singlequote style formatting
 fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String>) -> String {
     if args.len() >= 2 && args[0] == "-p" {
         let var_name = &args[1];
         if !is_valid_identifier(var_name) {
-            format!("declare: '{}': not a valid identifier\n", var_name)
+            format!("declare: `{}`: not a valid identifier\n", var_name)
         } else if let Some(val) = shell_variables.get(var_name) {
             format!("declare -- {}=\"{}\"\n", var_name, val)
         } else {
@@ -104,14 +104,14 @@ fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String
                 shell_variables.insert(trimmed_name.to_string(), value.to_string());
                 String::new()
             } else {
-                format!("declare: '{}': not a valid identifier\n", args[0])
+                format!("declare: `{}`: not a valid identifier\n", args[0])
             }
         } else {
             String::new()
         }
     } else if !args.is_empty() {
         if !is_valid_identifier(&args[0]) {
-            format!("declare: '{}': not a valid identifier\n", args[0])
+            format!("declare: `{}`: not a valid identifier\n", args[0])
         } else {
             String::new()
         }
