@@ -446,6 +446,7 @@ fn main() {
         tab_count: Cell::new(0),
         completions: Arc::clone(&completions),
     }));
+    let mut last_appended_idx = 0;
 
     loop {
         reap_jobs(&mut bg_jobs);
@@ -530,17 +531,19 @@ fn main() {
                     let _file = File::create(file_name).unwrap();
                 }
             }
-        } else if cmd_name == "history" {
+       } else if cmd_name == "history" {
             if args.len() >= 2 && args[0] == "-a" {
                 let file_path = &args[1];
                 match OpenOptions::new().create(true).append(true).open(file_path) {
                     Ok(mut file) => {
-                        for entry in r1.history().iter() {
+                        let total_entries = r1.history().len();
+                        for entry in r1.history().iter().skip(last_appended_idx) {
                             if let Err(e) = writeln!(file, "{}", entry) {
                                 eprintln!("history: error appending to file: {}", e);
                                 break;
                             }
                         }
+                        last_appended_idx = total_entries;
                     }
                     Err(e) => {
                         eprintln!("history: {}: {}", file_path, e);
