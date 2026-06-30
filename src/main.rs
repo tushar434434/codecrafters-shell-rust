@@ -530,21 +530,21 @@ fn main() {
                     let _file = File::create(file_name).unwrap();
                 }
             }
-         } else if cmd_name == "history" {
-            if args.len() >= 2 && args[0] == "-r" {
+        } else if cmd_name == "history" {
+            if args.len() >= 2 && args[0] == "-w" {
                 let file_path = &args[1];
-                use std::fs::File;
-                use std::io::{BufRead, BufReader};
-                
-                if let Ok(file) = File::open(file_path) {
-                    let reader = BufReader::new(file);
-                    for line in reader.lines().flatten() {
-                        if !line.trim().is_empty() {
-                            let _ = r1.add_history_entry(&line);
+                match File::create(file_path) {
+                    Ok(mut file) => {
+                        for entry in r1.history().iter() {
+                            if let Err(e) = writeln!(file, "{}", entry) {
+                                eprintln!("history: error writing to file: {}", e);
+                                break;
+                            }
                         }
                     }
-                } else {
-                    eprintln!("history: {}: No such file or directory", file_path);
+                    Err(e) => {
+                        eprintln!("history: {}: {}", file_path, e);
+                    }
                 }
             } else {
                 let total_entries = r1.history().len();
@@ -557,7 +557,9 @@ fn main() {
                 for (index, entry) in r1.history().iter().enumerate().skip(skip_count) {
                     println!("  {}  {}", index + 1, entry);
                 }
-            }}
+            }
+        }
+        
                 else if cmd_name == "type" {
              if args.is_empty() {
                 println!("type: missing arguments");
