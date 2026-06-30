@@ -34,6 +34,7 @@ fn find_executable(cmd: &str) -> Option<PathBuf> {
     }
     None
 }
+
 fn parse_arguments(input: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
@@ -70,6 +71,19 @@ fn parse_arguments(input: &str) -> Vec<String> {
     }
 
     parts
+}
+
+fn is_valid_identifier(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let mut chars = s.chars();
+    if let Some(first) = chars.next() {
+        if !first.is_ascii_alphabetic() && first != '_' {
+            return false;
+        }
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 struct ShellHelper {
@@ -619,14 +633,21 @@ fn main() {
         } else if cmd_name == "declare" {
             if args.len() >= 2 && args[0] == "-p" {
                 let var_name = &args[1];
-                if let Some(val) = shell_variables.get(var_name) {
+                if !is_valid_identifier(var_name) {
+                    println!("declare: not a valid identifier");
+                } else if let Some(val) = shell_variables.get(var_name) {
                     println!("declare -- {}=\"{}\"", var_name, val);
                 } else {
                     println!("declare: {}: not found", var_name);
                 }
             } else if !args.is_empty() && args[0].contains('=') {
                 if let Some((name, value)) = args[0].split_once('=') {
-                    shell_variables.insert(name.trim().to_string(), value.to_string());
+                    let trimmed_name = name.trim();
+                    if is_valid_identifier(trimmed_name) {
+                        shell_variables.insert(trimmed_name.to_string(), value.to_string());
+                    } else {
+                        println!("declare: not a valid identifier");
+                    }
                 }
             }
         } else if cmd_name == "type" {
