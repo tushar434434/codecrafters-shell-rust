@@ -531,7 +531,23 @@ fn main() {
                 }
             }
         } else if cmd_name == "history" {
-            if args.len() >= 2 && args[0] == "-w" {
+            if args.len() >= 2 && args[0] == "-r" {
+                let file_path = &args[1];
+                use std::fs::File;
+                use std::io::{BufRead, BufReader};
+                
+                if let Ok(file) = File::open(file_path) {
+                    let reader = BufReader::new(file);
+                    for line in reader.lines().flatten() {
+                        if !line.trim().is_empty() {
+                            let _ = r1.add_history_entry(&line);
+                        }
+                    }
+                } else {
+                    eprintln!("history: {}: No such file or directory", file_path);
+                }
+                
+            } else if args.len() >= 2 && args[0] == "-w" {
                 let file_path = &args[1];
                 match File::create(file_path) {
                     Ok(mut file) => {
@@ -555,11 +571,11 @@ fn main() {
                 };
                 let skip_count = total_entries.saturating_sub(limit);
                 for (index, entry) in r1.history().iter().enumerate().skip(skip_count) {
-                    println!("  {}  {}", index + 1, entry);
+                    println!("{} {}", index + 1, entry);
                 }
             }
         }
-        
+        }
                 else if cmd_name == "type" {
              if args.is_empty() {
                 println!("type: missing arguments");
