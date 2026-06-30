@@ -525,10 +525,10 @@ fn handle_pipeline(command_str: &str, shell_variables: &mut HashMap<String, Stri
 
         let cmd_path = match find_executable(&cmd_name) {
             Some(path) => path,
-            None {
-                println!("{}: command not found", cmd_name);
-                return;
-            }
+           None => {
+    println!("No match found");
+    return Ok((pos, Vec::new()));
+}
         };
 
         let mut cmd = Command::new(cmd_path);
