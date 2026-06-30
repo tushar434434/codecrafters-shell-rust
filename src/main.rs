@@ -103,7 +103,7 @@ fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String
                 shell_variables.insert(trimmed_name.to_string(), value.to_string());
                 String::new()
             } else {
-                format!("declare: `{}`: not a valid identifier\n", args[0])
+                format!("declare: `{}`: not a valid identifier\n", trimmed_name)
             }
         } else {
             String::new()
