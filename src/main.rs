@@ -34,8 +34,6 @@ fn find_executable(cmd: &str) -> Option<PathBuf> {
     }
     None
 }
-
-// Quote-aware argument parser for pipelines and clean command parsing
 fn parse_arguments(input: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
@@ -401,8 +399,6 @@ fn handle_pipeline(command_str: &str) {
 
         let mut cmd = Command::new(cmd_path);
         cmd.args(&cmd_args);
-
-        // Standard classic chain setup using Stdio configuration
         if builtin_output_buffer.is_some() {
             cmd.stdin(Stdio::piped());
         } else if let Some(stdout) = previous_stdout.take() {
@@ -535,17 +531,33 @@ fn main() {
                 }
             }
          } else if cmd_name == "history" {
-             let total_entries = r1.history().len();
-             let limit = if !args.is_empty() {
-              args[0].parse::<usize>().unwrap_or(total_entries)
-                 } else {
-               total_entries
-                };
-                 let skip_count = total_entries.saturating_sub(limit);
-                 for (index, entry) in r1.history().iter().enumerate().skip(skip_count) {
-                  println!("  {}  {}", index + 1, entry);
-                  }
+            if args.len() >= 2 && args[0] == "-r" {
+                let file_path = &args[1];
+                use std::fs::File;
+                use std::io::{BufRead, BufReader};
+                
+                if let Ok(file) = File::open(file_path) {
+                    let reader = BufReader::new(file);
+                    for line in reader.lines().flatten() {
+                        if !line.trim().is_empty() {
+                            let _ = r1.add_history_entry(&line);
+                        }
+                    }
+                } else {
+                    eprintln!("history: {}: No such file or directory", file_path);
                 }
+            } else {
+                let total_entries = r1.history().len();
+                let limit = if !args.is_empty() {
+                    args[0].parse::<usize>().unwrap_or(total_entries)
+                } else {
+                    total_entries
+                };
+                let skip_count = total_entries.saturating_sub(limit);
+                for (index, entry) in r1.history().iter().enumerate().skip(skip_count) {
+                    println!("  {}  {}", index + 1, entry);
+                }
+            }
                 else if cmd_name == "type" {
              if args.is_empty() {
                 println!("type: missing arguments");
