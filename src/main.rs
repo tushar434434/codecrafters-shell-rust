@@ -557,7 +557,7 @@ fn main() {
                 for (index, entry) in r1.history().iter().enumerate().skip(skip_count) {
                     println!("  {}  {}", index + 1, entry);
                 }
-            }
+            }}
                 else if cmd_name == "type" {
              if args.is_empty() {
                 println!("type: missing arguments");
