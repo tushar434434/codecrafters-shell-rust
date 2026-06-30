@@ -441,6 +441,7 @@ fn main() {
     let completions: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
     let mut bg_jobs: Vec<BgJob> = Vec::new();
+    let shell_variables: HashMap<String, String> = HashMap::new();
 
     if let Ok(hist_file) = env::var("HISTFILE") {
         use std::io::{BufRead, BufReader};
@@ -616,7 +617,12 @@ fn main() {
                 }
             }
         } else if cmd_name == "declare" {
-            // Placeholder for future behavioral updates in upcoming stages
+            if args.len() >= 2 && args[0] == "-p" {
+                let var_name = &args[1];
+                if !shell_variables.contains_key(var_name) {
+                    println!("declare: {}: not found", var_name);
+                }
+            }
         } else if cmd_name == "type" {
              if args.is_empty() {
                 println!("type: missing arguments");
