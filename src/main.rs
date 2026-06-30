@@ -534,6 +534,7 @@ fn main() {
     let mut r1 = Editor::<ShellHelper, DefaultHistory>::new().unwrap();
     let mut bg_jobs: Vec<BgJob> = Vec::new();
     let mut shell_variables: HashMap<String, String> = HashMap::new();
+    let mut custom_history: Vec<String> = Vec::new();
 
     if let Ok(hist_file) = env::var("HISTFILE") {
         use std::io::{BufRead, BufReader};
@@ -542,6 +543,7 @@ fn main() {
             for line in reader.lines().flatten() {
                 if !line.trim().is_empty() {
                     let _ = r1.add_history_entry(&line);
+                    custom_history.push(line);
                 }
             }
         }
@@ -552,7 +554,7 @@ fn main() {
         tab_count: Cell::new(0),
         completions: Arc::clone(&completions),
     }));
-    let mut last_appended_idx = r1.history().len();
+    let mut last_appended_idx = custom_history.len();
 
     loop {
         reap_jobs(&mut bg_jobs);
@@ -565,6 +567,8 @@ fn main() {
             continue;
         }
         let _ = r1.add_history_entry(&command);
+        custom_history.push(command.clone());
+
         if command.contains('|'){
             handle_pipeline(&command, &mut shell_variables);
             continue;
@@ -619,7 +623,7 @@ fn main() {
         if cmd_name == "exit" {
             if let Ok(hist_file) = env::var("HISTFILE") {
                 if let Ok(mut file) = File::create(&hist_file) {
-                    for entry in r1.history().iter() {
+                    for entry in &custom_history {
                         if let Err(e) = writeln!(file, "{}", entry) {
                             eprintln!("history: error writing to HISTFILE on exit: {}", e);
                             break;
@@ -652,14 +656,13 @@ fn main() {
                 let file_path = &args[1];
                 match OpenOptions::new().create(true).append(true).open(file_path) {
                     Ok(mut file) => {
-                        let total_entries = r1.history().len();
-                        for entry in r1.history().iter().skip(last_appended_idx) {
+                        for entry in custom_history.iter().skip(last_appended_idx) {
                             if let Err(e) = writeln!(file, "{}", entry) {
                                 eprintln!("history: error appending to file: {}", e);
                                 break;
                             }
                         }
-                        last_appended_idx = total_entries;
+                        last_appended_idx = custom_history.len();
                     }
                     Err(e) => {
                         eprintln!("history: {}: {}", file_path, e);
@@ -675,9 +678,10 @@ fn main() {
                     for line in reader.lines().flatten() {
                         if !line.trim().is_empty() {
                             let _ = r1.add_history_entry(&line);
+                            custom_history.push(line);
                         }
                     }
-                    last_appended_idx = r1.history().len();
+                    last_appended_idx = custom_history.len();
                 } else {
                     eprintln!("history: {}: No such file or directory", file_path);
                 }
@@ -685,7 +689,7 @@ fn main() {
                 let file_path = &args[1];
                 match File::create(file_path) {
                     Ok(mut file) => {
-                        for entry in r1.history().iter() {
+                        for entry in &custom_history {
                             if let Err(e) = writeln!(file, "{}", entry) {
                                 eprintln!("history: error writing to file: {}", e);
                                 break;
@@ -697,15 +701,15 @@ fn main() {
                     }
                 }
             } else {
-                let total_entries = r1.history().len();
+                let total_entries = custom_history.len();
                 let limit = if !args.is_empty() {
                     args[0].parse::<usize>().unwrap_or(total_entries)
                 } else {
                     total_entries
                 };
                 let skip_count = total_entries.saturating_sub(limit);
-                for (index, entry) in r1.history().iter().enumerate().skip(skip_count) {
-                    println!("{} {}", index + 1, entry);
+                for (index, entry) in custom_history.iter().enumerate().skip(skip_count) {
+                    println!("{:>5}  {}", index + 1, entry);
                 }
             }
         } else if cmd_name == "declare" {
