@@ -103,7 +103,8 @@ fn execute_declare(args: &[String], shell_variables: &mut HashMap<String, String
                 shell_variables.insert(trimmed_name.to_string(), value.to_string());
                 String::new()
             } else {
-                format!("declare: `{}`: not a valid identifier\n", trimmed_name)
+                // Kept args[0] here as expected by CodeCrafters
+                format!("declare: `{}`: not a valid identifier\n", args[0])
             }
         } else {
             String::new()
@@ -430,6 +431,7 @@ fn handle_pipeline(command_str: &str, shell_variables: &mut HashMap<String, Stri
                 }
             }     
             if i == num_stages - 1 {
+                // FIX: Correctly check for validation errors here inside the pipeline execution
                 if current_builtin_output.contains("not a valid identifier") || current_builtin_output.contains("not found") {
                     eprint!("{}", current_builtin_output);
                     let _ = io::stderr().flush();
